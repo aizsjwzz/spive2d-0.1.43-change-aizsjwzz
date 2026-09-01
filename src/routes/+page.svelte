@@ -598,15 +598,17 @@
   />
   <div id="canvasContainer" bind:this={canvasContainer}></div>
 
-  <div id="infoText">
-  测试文字ABC123
-  </div>
-</div>
+  {#if appState.readConfig}
+    <div id="infoText">
+      Hello Spive2D
+    </div>
+  {/if}
 
 <AnimationController bind:this={animController} />
 
 <ExportQueue />
 <Notification />
+</div>
 
 <style>
   #spinner-backdrop {

@@ -38,6 +38,7 @@ let exportMarginY = $state(0);
 let alphaMode = $state(loadSetting('spive2d_alpha_mode', 'pma'));
 let textureFilter = $state(loadSetting('spive2d_texture_filter', 'linear'));
 let skipUnity = $state(loadSetting('spive2d_skip_unity', 'false') === 'true');
+let readConfig = $state(loadSetting('spive2d_read_config', 'false') === 'true');
 let mergeSequential = $state(loadSetting('spive2d_merge_sequential', 'false') === 'true');
 
 let fileSortMode = $state(loadSetting('spive2d_file_sort_mode', 'asc'));
@@ -85,6 +86,8 @@ export const appState = {
   set enableMouseTracking(v) { enableMouseTracking = v; },
   get skipUnity() { return skipUnity; },
   set skipUnity(v) { skipUnity = v; },
+  get readConfig() { return readConfig; },
+  set readConfig(v) { readConfig = v; },
   SCALE_MAX,
   SCALE_MIN,
   resetTransform() {
