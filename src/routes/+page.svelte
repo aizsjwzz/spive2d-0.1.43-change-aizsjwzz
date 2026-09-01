@@ -597,6 +597,10 @@
 	onFileSortModeChange={handleFileSortModeChange}
   />
   <div id="canvasContainer" bind:this={canvasContainer}></div>
+
+  <div id="infoText">
+  测试文字ABC123
+  </div>
 </div>
 
 <AnimationController bind:this={animController} />
@@ -642,5 +646,20 @@
     position: absolute;
     top: 0;
     left: 0;
+  }
+
+  #infoText {
+  position: fixed;
+  bottom: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: white;
+  font-size: 25px;
+  z-index: 100;
+  text-shadow:
+    -1px -1px 0 #000,
+     1px -1px 0 #000,
+    -1px  1px 0 #000,
+     1px  1px 0 #000;
   }
 </style>

@@ -631,6 +631,15 @@
         <button onclick={handleRemoveBackground}>{t('removeBackground')}</button>
       </div>
       <hr>
+      
+      <div class="input-row" style="margin-top: 5px;">
+        <label style="display: flex; align-items: center; cursor: pointer; gap: 12px; width: 100%; white-space: nowrap;">
+          <input type="checkbox" bind:checked={appState.readConfig} onchange={() => {
+            saveSetting('spive2d_read_config', appState.readConfig);
+          }}>
+          <span>{t('readConfig')}</span>
+        </label>
+      </div>
       <div class="input-row" style="margin-top: 5px;">
         <label style="display: flex; align-items: center; cursor: pointer; gap: 12px; width: 100%; white-space: nowrap;">
           <input type="checkbox" bind:checked={appState.skipUnity} onchange={() => {
