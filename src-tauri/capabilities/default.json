@@ -1,0 +1,87 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Capability for the main window",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:default",
+    "core:window:allow-set-size",
+    "core:window:allow-close",
+    "dialog:allow-open",
+    "dialog:allow-save",
+    "opener:default",
+    "window-state:default",
+    "opener:allow-open-path",
+    {
+      "identifier": "opener:allow-open-path",
+      "allow": [
+        {
+          "path": "$DOWNLOAD/**"
+        },
+        {
+          "path": "$DESKTOP/**"
+        },
+        {
+          "path": "$DOCUMENT/**"
+        },
+        {
+          "path": "$PICTURE/**"
+        },
+        {
+          "path": "$TEMP/**"
+        }
+      ]
+    },
+    "fs:default",
+    "fs:allow-write-text-file",
+    "fs:allow-write-file",
+    {
+      "identifier": "fs:allow-write-file",
+      "allow": [
+        {
+          "path": "$DOWNLOAD/spive2d_export"
+        },
+        {
+          "path": "$DOWNLOAD/spive2d_export/**"
+        }
+      ]
+    },
+    {
+      "identifier": "fs:allow-write-text-file",
+      "allow": [
+        {
+          "path": "$DOWNLOAD/spive2d_export"
+        },
+        {
+          "path": "$DOWNLOAD/spive2d_export/**"
+        }
+      ]
+    },
+    "fs:allow-mkdir",
+    {
+      "identifier": "fs:allow-mkdir",
+      "allow": [
+        {
+          "path": "$DOWNLOAD/spive2d_export"
+        },
+        {
+          "path": "$DOWNLOAD/spive2d_export/**"
+        }
+      ]
+    },
+    "fs:allow-exists",
+    {
+      "identifier": "fs:allow-exists",
+      "allow": [
+        {
+          "path": "$DOWNLOAD/spive2d_export"
+        },
+        {
+          "path": "$DOWNLOAD/spive2d_export/**"
+        }
+      ]
+    }
+  ]
+}

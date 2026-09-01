@@ -1,0 +1,100 @@
+import { loadSetting } from './settings.js';
+
+let initialized = $state(false);
+let processing = $state(false);
+let viewport = $state({
+  width: typeof window !== 'undefined' ? window.innerWidth : 1200,
+  height: typeof window !== 'undefined' ? window.innerHeight : 800,
+});
+let transform = $state({
+  scale: 1,
+  moveX: 0,
+  moveY: 0,
+  rotate: 0,
+});
+let animation = $state({
+  paused: false,
+  seeking: false,
+  seekProgress: 0,
+  currentTime: 0,
+  duration: 0,
+  speed: 1.0,
+});
+let directories = $state({
+  files: null,
+  entries: [],
+  selectedDir: '',
+  selectedScene: 0,
+});
+let background = $state({
+  color: loadSetting('spive2d_bg_color', ''),
+  imagePath: loadSetting('spive2d_bg_image_path', ''),
+});
+let propertyCategory = $state('parameters');
+let exportBase = $state('window');
+let exportScale = $state(100);
+let exportMarginX = $state(0);
+let exportMarginY = $state(0);
+let alphaMode = $state(loadSetting('spive2d_alpha_mode', 'pma'));
+let textureFilter = $state(loadSetting('spive2d_texture_filter', 'linear'));
+let skipUnity = $state(loadSetting('spive2d_skip_unity', 'false') === 'true');
+let mergeSequential = $state(loadSetting('spive2d_merge_sequential', 'false') === 'true');
+
+let fileSortMode = $state(loadSetting('spive2d_file_sort_mode', 'asc'));
+
+let enableIdleAndBreathing = $state(loadSetting('spive2d_enable_idle_and_breathing', 'false') === 'true');
+let enableMouseTracking = $state(loadSetting('spive2d_enable_mouse_tracking', 'false') === 'true');
+const SCALE_MAX = 16;
+const SCALE_MIN = 0.125;
+export const appState = {
+  get initialized() { return initialized; },
+  set initialized(v) { initialized = v; },
+  get processing() { return processing; },
+  set processing(v) { processing = v; },
+  get viewport() { return viewport; },
+  set viewport(v) { viewport = v; },
+  get transform() { return transform; },
+  set transform(v) { transform = v; },
+  get animation() { return animation; },
+  set animation(v) { animation = v; },
+  get directories() { return directories; },
+  set directories(v) { directories = v; },
+  get background() { return background; },
+  set background(v) { background = v; },
+  get propertyCategory() { return propertyCategory; },
+  set propertyCategory(v) { propertyCategory = v; },
+  get exportBase() { return exportBase; },
+  set exportBase(v) { exportBase = v; },
+  get exportScale() { return exportScale; },
+  set exportScale(v) { exportScale = v; },
+  get exportMarginX() { return exportMarginX; },
+  set exportMarginX(v) { exportMarginX = v; },
+  get exportMarginY() { return exportMarginY; },
+  set exportMarginY(v) { exportMarginY = v; },
+  get alphaMode() { return alphaMode; },
+  set alphaMode(v) { alphaMode = v; },
+  get textureFilter() { return textureFilter; },
+  set textureFilter(v) { textureFilter = v; },
+  get mergeSequential() { return mergeSequential; },
+  set mergeSequential(v) { mergeSequential = v; },
+  get fileSortMode() { return fileSortMode; },
+  set fileSortMode(v) { fileSortMode = v; },
+  get enableIdleAndBreathing() { return enableIdleAndBreathing; },
+  set enableIdleAndBreathing(v) { enableIdleAndBreathing = v; },
+  get enableMouseTracking() { return enableMouseTracking; },
+  set enableMouseTracking(v) { enableMouseTracking = v; },
+  get skipUnity() { return skipUnity; },
+  set skipUnity(v) { skipUnity = v; },
+  SCALE_MAX,
+  SCALE_MIN,
+  resetTransform() {
+    transform = { scale: 1, moveX: 0, moveY: 0, rotate: 0 };
+    exportScale = 100;
+    exportMarginX = 0;
+    exportMarginY = 0;
+    exportBase = 'window';
+  },
+  resetAnimation() {
+    animation = { paused: false, seeking: false, seekProgress: 0, currentTime: 0, duration: 0, speed: 1.0 };
+  },
+};

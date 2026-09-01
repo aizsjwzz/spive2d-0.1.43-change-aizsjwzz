@@ -1,0 +1,535 @@
+import { Output, WebMOutputFormat, BufferTarget, CanvasSource } from 'mediabunny';
+import { setupWorkerEnv } from './workerPolyfills.js';
+import { SpineRendererBase } from './renderer/SpineRendererBase.js';
+import {
+  getLive2DFrameBox,
+  fitLive2DBox,
+  canUpdateLive2DCore,
+  getCubism2MotionEntry,
+  pinCubism2MotionEntry,
+  getLive2DMotionDuration,
+  registerLive2DMotionFiles,
+  CUBISM2_TIME_BASE,
+} from './renderer/Live2DCommon.js';
+
+let currentTasks = new Map();
+let libsLoaded = false;
+let libsLoadedVersion = null;
+
+async function loadLibraries(rendererType, version = null, libraryBaseUrl = null) {
+  if (libsLoaded === rendererType && (rendererType !== 'spine' || libsLoadedVersion === version)) return;
+  const isLive2D = rendererType === 'live2d';
+  const isSpine = rendererType === 'spine';
+  const origin = libraryBaseUrl || self.location.origin;
+  setupWorkerEnv(self);
+  if (isLive2D) {
+    const scripts = [
+      origin + '/lib/pixi.min.js',
+      origin + '/lib/live2dcubismcore.min.js',
+      origin + '/lib/live2d.min.js',
+      origin + '/lib/index.min.js'
+    ];
+    for (const url of scripts) {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`Failed to fetch ${url}`);
+      let code = await response.text();
+      code += "\n;if(typeof PIXI !== 'undefined') self.PIXI = PIXI; if(typeof Live2DCubismCore !== 'undefined') self.Live2DCubismCore = Live2DCubismCore; if(typeof Live2D !== 'undefined') self.Live2D = Live2D;";
+      (new Function(code)).call(self);
+    }
+    if (!self.PIXI) throw new Error('PIXI failed to initialize');
+    self.setupPIXISettings(self.PIXI);
+    if (self.PIXI.live2d?.config) {
+      self.PIXI.live2d.config.sound = false;
+    }
+  } else if (isSpine && version) {
+    const url = `${origin}/lib/spine-webgl-${version}.js`;
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`Failed to fetch ${url}`);
+    let code = await response.text();
+    code += "\n;if(typeof spine !== 'undefined') self.spine = spine;";
+    (new Function(code)).call(self);
+    if (!self.spine) throw new Error(`Spine failed to initialize`);
+    if (version[0] === '3') {
+      if (self.spine.webgl) Object.assign(self.spine, self.spine.webgl);
+      if (!self.spine.core) self.spine.core = self.spine;
+    }
+    self.spineLib = self.spine;
+    libsLoadedVersion = version;
+  }
+  libsLoaded = rendererType;
+}
+
+class WorkerLive2DRenderer {
+  constructor(canvas) {
+    const rendererOptions = {
+      width: canvas.width,
+      height: canvas.height,
+      view: canvas,
+      transparent: true,
+      preserveDrawingBuffer: true,
+      antialias: true,
+      resolution: 1,
+    };
+    this.renderer = new PIXI.Renderer(rendererOptions);
+    if (self.Live2D && self.Live2D.setGL) {
+      self.Live2D.setGL(this.renderer.gl);
+    }
+    this.app = {
+      renderer: this.renderer,
+      stage: new PIXI.Container(),
+      view: canvas,
+      render: () => {
+        this.renderer.render(this.app.stage);
+      },
+      destroy: (removeView) => {
+        this.renderer.destroy(removeView);
+        this.app.stage.destroy({ children: true });
+      }
+    };
+    this.model = null;
+    this._cubism2Entry = null;
+    this._currentDuration = 0.1;
+    this.parameterOverrides = new Map();
+    this.partOverrides = new Map();
+    this.drawableOverrides = new Map();
+    this.hiddenDrawables = new Set();
+    this.opacities = null;
+    this.marginX = 0;
+    this.marginY = 0;
+    this.contentWidth = 0;
+    this.contentHeight = 0;
+    this.ignoreTransform = false;
+    this._lastSeekTime = 0;
+    this._textureFilter = null;
+  }
+
+  applySyncState(state) {
+    if (!state) return;
+    if (state.parameterOverrides) this.parameterOverrides = new Map(state.parameterOverrides);
+    if (state.partOverrides) this.partOverrides = new Map(state.partOverrides);
+    if (state.drawableOverrides) {
+      this.drawableOverrides = new Map(state.drawableOverrides);
+      for (const [index, visible] of this.drawableOverrides) {
+        if (visible) this.hiddenDrawables.delete(index);
+        else this.hiddenDrawables.add(index);
+      }
+    }
+    if (this.model) {
+      const coreModel = this.model.internalModel.coreModel;
+      if (state.initialPartOpacities) {
+        for (const [name, opacity] of state.initialPartOpacities) {
+          coreModel.setPartOpacityById(name, opacity);
+        }
+      }
+      if (state.initialParameterValues) {
+        for (const [id, value] of state.initialParameterValues) {
+          const idx = coreModel._parameterIds.indexOf(id);
+          if (idx !== -1) coreModel._parameterValues[idx] = value;
+        }
+      }
+    }
+  }
+
+  applyOverrides() {
+    if (!this.model) return;
+    const coreModel = this.model.internalModel.coreModel;
+    for (const [index, value] of this.parameterOverrides) {
+      coreModel._parameterValues[index] = value;
+    }
+    for (const [name, opacity] of this.partOverrides) {
+      coreModel.setPartOpacityById(name, opacity);
+    }
+    if (self.Live2D && self.Live2D.setGL) {
+      self.Live2D.setGL(this.renderer.gl);
+    }
+    if (canUpdateLive2DCore(coreModel)) {
+      coreModel.update();
+    }
+    if (this.hiddenDrawables.size > 0 && !this.opacities && coreModel._model?.drawables?.opacities) {
+      const wasmOpacities = coreModel._model.drawables.opacities;
+      const renderer = this;
+      this.opacities = new Proxy(wasmOpacities, {
+        get(target, prop) {
+          if (typeof prop === 'string') {
+            const idx = Number(prop);
+            if (!isNaN(idx) && renderer.hiddenDrawables.has(idx)) return 0;
+          }
+          const val = target[prop];
+          return typeof val === 'function' ? val.bind(target) : val;
+        }
+      });
+      coreModel._model.drawables.opacities = this.opacities;
+    }
+  }
+
+  hideMaskMosaicDrawables() {
+    const coreModel = this.model?.internalModel?.coreModel;
+    if (!coreModel || !coreModel._drawableIds) return;
+    coreModel._drawableIds.forEach((name, index) => {
+      if (name && name.includes('Mosaic')) {
+        this.hiddenDrawables.add(index);
+      }
+    });
+  }
+
+  async load(modelUrl, motionFiles) {
+    const { live2d: { Live2DModel } } = PIXI;
+    this._cubism2Entry = null;
+    this.model = await Live2DModel.from(modelUrl, { autoInteract: false, idleMotionGroup: 'None' });
+    registerLive2DMotionFiles(this.model, motionFiles);
+    this.model.autoUpdate = false;
+    this.app.stage.addChild(this.model);
+    const { width, height } = this.app.view;
+    this.model.anchor.set(0.5, 0.5);
+    this.app.render();
+    this.frameBox = getLive2DFrameBox(this.model.internalModel);
+    const { baseScale, dx, dy } = fitLive2DBox(this.model.internalModel, this.frameBox, width, height);
+    this.model.scale.set(baseScale);
+    this.model.position.set(width * 0.5 - dx * baseScale, height * 0.5 - dy * baseScale);
+    if (this.model.internalModel && this.model.internalModel.breath) {
+      this.model.internalModel.breath = null;
+    }
+    this.hideMaskMosaicDrawables();
+    if (this._textureFilter) {
+      this.setTextureFilter(this._textureFilter);
+    }
+  }
+
+  async setAnimation(value) {
+    if (this.model && value) {
+      let [group, indexStr] = value.split(',');
+      const index = indexStr !== undefined ? Number(indexStr) : 0;
+      if (!group && this.model.internalModel.settings.motions) {
+        const groups = Object.keys(this.model.internalModel.settings.motions);
+        if (groups.length > 0) {
+          group = groups[0];
+        }
+      }
+      await this.model.motion(group, index, PIXI.live2d.MotionPriority.FORCE);
+      const mm = this.model.internalModel.motionManager;
+      const mqm = mm?.queueManager;
+      this._cubism2Entry = getCubism2MotionEntry(this.model);
+      if (this._cubism2Entry) {
+        this._currentDuration = getLive2DMotionDuration(this._cubism2Entry._$w0) || 0.1;
+      } else if (mqm?._motions?.length > 0) {
+        const entry = mqm._motions[0];
+        const m = entry._motion;
+        if (m) {
+          this._currentDuration = getLive2DMotionDuration(m) || 0.1;
+          m._fadeInSeconds = 0;
+          m._fadeOutSeconds = 0;
+          if (m._motionData?.curves) {
+            for (const curve of m._motionData.curves) {
+              curve.fadeInTime = -1;
+              curve.fadeOutTime = -1;
+            }
+          }
+        }
+      } else {
+        this._currentDuration = 0.1;
+      }
+    }
+  }
+
+  async setExpression(value) {
+    if (!this.model || value === '' || value === undefined || value === null) return;
+    const index = Number(value);
+    await this.model.expression(Number.isNaN(index) ? value : index);
+    const expression = this.model.internalModel.motionManager?.expressionManager?.currentExpression;
+    if (!expression) return;
+    expression.setFadeInTime?.(0);
+    expression.setFadeOutTime?.(0);
+    expression.setFadeIn?.(0);
+    expression.setFadeOut?.(0);
+  }
+
+  applyExpression(now) {
+    const expressionManager = this.model?.internalModel?.motionManager?.expressionManager;
+    expressionManager?.update(this.model.internalModel.coreModel, now);
+  }
+
+  getFPS() {
+    if (!this.model) return 60;
+    if (this._cubism2Entry) {
+      return Math.max(60, this._cubism2Entry._$w0._$D0 || 60);
+    }
+    const mqm = this.model.internalModel.motionManager?.queueManager;
+    if (mqm?._motions?.length > 0) {
+      const motion = mqm._motions[0]._motion;
+      if (motion) {
+        return Math.max(60, motion._fps || (motion._motionData && motion._motionData.fps) || 60);
+      }
+    }
+    return 60;
+  }
+
+  setTransform(scale, x, y, rotation, originalWidth, originalHeight, screenBaseScale, ignoreTransform, contentWidth, contentHeight) {
+    if (!this.model) return;
+    const { width: canvasWidth, height: canvasHeight } = this.app.view;
+    const box = this.frameBox || (this.frameBox = getLive2DFrameBox(this.model.internalModel));
+    const { baseScale, dx, dy } = (contentWidth && contentHeight)
+      ? fitLive2DBox(this.model.internalModel, box, contentWidth, contentHeight)
+      : fitLive2DBox(this.model.internalModel, box, canvasWidth, canvasHeight, this.marginX, this.marginY);
+    if (ignoreTransform) {
+      this.model.scale.set(baseScale);
+      this.model.position.set(canvasWidth * 0.5 - dx * baseScale, canvasHeight * 0.5 - dy * baseScale);
+      this.model.rotation = 0;
+    } else {
+      const scaleFactor = screenBaseScale ? (baseScale / screenBaseScale) : 1;
+      const s = baseScale * (scale || 1);
+      this.model.scale.set(s);
+      this.model.position.set(
+        canvasWidth * 0.5 - dx * s + (x || 0) * scaleFactor,
+        canvasHeight * 0.5 - dy * s + (y || 0) * scaleFactor
+      );
+      this.model.rotation = (rotation || 0) * Math.PI / 180;
+    }
+  }
+
+  seek(progress) {
+    if (this.model) {
+      const mm = this.model.internalModel.motionManager;
+      const mqm = mm?.queueManager;
+      const coreModel = this.model.internalModel.coreModel;
+      if (this._cubism2Entry) {
+        pinCubism2MotionEntry(this._cubism2Entry);
+        self.UtSystem?.setUserTimeMSec?.(CUBISM2_TIME_BASE + progress * this._currentDuration * 1000);
+        mqm.updateParam(coreModel);
+        coreModel.saveParam?.();
+        this.applyExpression(0);
+        this.applyOverrides();
+        coreModel.loadParam?.();
+        this.model.deltaTime = 0;
+        return;
+      }
+      const entry = mqm?._motions?.[0];
+      if (entry?._motion) {
+        const targetTime = progress * this._currentDuration;
+        const savedStateTime = entry._stateTimeSeconds;
+        entry._startTimeSeconds = savedStateTime - targetTime;
+        mm.update(coreModel, savedStateTime);
+        coreModel.saveParameters?.();
+        this.applyExpression(savedStateTime);
+        this.applyOverrides();
+        entry._startTimeSeconds = entry._stateTimeSeconds - targetTime;
+        if (canUpdateLive2DCore(coreModel)) {
+          coreModel.update();
+        }
+        coreModel.loadParameters?.();
+        this.model.deltaTime = 0;
+      }
+    }
+  }
+
+  render() {
+    this.app.render();
+  }
+
+  setTextureFilter(filter) {
+    this._textureFilter = filter;
+    if (!this.model) return;
+    const mode = filter === 'nearest' ? PIXI.SCALE_MODES.NEAREST : PIXI.SCALE_MODES.LINEAR;
+    const updateTextureScaleMode = (object) => {
+      if (!object) return;
+      if (object.texture && object.texture.baseTexture) {
+        object.texture.baseTexture.scaleMode = mode;
+        object.texture.baseTexture.update();
+      }
+      if (object.children) {
+        object.children.forEach(updateTextureScaleMode);
+      }
+    };
+    updateTextureScaleMode(this.model);
+  }
+
+  dispose() {
+    if (this.model) {
+      this.app.stage.removeChild(this.model);
+      this.model.destroy();
+    }
+    this.app.destroy(true);
+  }
+}
+
+class WorkerSpineRenderer extends SpineRendererBase {
+  _currentDuration = 0.1;
+  marginX = 0;
+  marginY = 0;
+  contentWidth = 0;
+  contentHeight = 0;
+  ignoreTransform = false;
+
+  constructor(canvas, spineLib) {
+    super(canvas, spineLib, true);
+  }
+
+  async load(dirName, scene, isFileJson, alphaMode = 'unpack') {
+    await this.initCtx(alphaMode);
+    await this.loadAssets(dirName, scene, isFileJson);
+    await this._waitForAssets();
+    await this.processLoadedAssets();
+    this._currentDuration = this.getAnimationDuration();
+  }
+
+  async setAnimation(value) {
+    await super.setAnimation(value);
+    this._currentDuration = this.getAnimationDuration();
+  }
+
+  setTransform(scale, x, y, rotation, ignoreTransform, contentWidth, contentHeight, screenBaseScale) {
+    this.ignoreTransform = ignoreTransform;
+    this.contentWidth = contentWidth;
+    this.contentHeight = contentHeight;
+    this.screenBaseScale = screenBaseScale;
+    if (ignoreTransform) {
+      this.applyTransform(1, 0, 0, 0);
+    } else {
+      this.applyTransform(scale, x, y, rotation);
+    }
+  }
+
+  seek(progress) {
+    this.seekAnimation(progress);
+  }
+
+  render() {
+    super.render(0, {
+      marginX: this.marginX,
+      marginY: this.marginY,
+      contentWidth: this.contentWidth,
+      contentHeight: this.contentHeight,
+      screenBaseScale: this.screenBaseScale
+    });
+  }
+}
+
+async function processQueue(id) {
+  const t = currentTasks.get(id);
+  if (!t || t.isRendering || t.renderQueue.length === 0) return;
+  t.isRendering = true;
+  try {
+    while (t.renderQueue.length > 0) {
+      const { sampleTime, containerTime, sequence } = t.renderQueue.shift();
+      if (t.renderer) {
+        t.renderer.seek(sampleTime / (t.renderer._currentDuration || 0.1));
+        t.renderer.render();
+        const gl = t.renderer.renderer?.gl || t.renderer._ctx?.gl;
+        if (gl) gl.flush();
+      }
+      if (t.compositeCtx) {
+        t.compositeCtx.clearRect(0, 0, t.canvas.width, t.canvas.height);
+        if (t.bgBitmap) t.compositeCtx.drawImage(t.bgBitmap, 0, 0, t.canvas.width, t.canvas.height);
+        else if (t.bgColor) { t.compositeCtx.fillStyle = t.bgColor; t.compositeCtx.fillRect(0, 0, t.canvas.width, t.canvas.height); }
+        t.compositeCtx.drawImage(t.renderCanvas, 0, 0);
+      } else if (t.renderCanvas !== t.canvas) {
+        throw new Error('Failed to get 2D context for compositing. The resolution might be too high for the GPU.');
+      }
+      if (t.videoSource) {
+        await t.videoSource.add(containerTime, 1 / t.fps);
+        self.postMessage({ type: 'FRAME_ADDED', id });
+      } else {
+        const bitmap = await createImageBitmap(t.canvas);
+        self.postMessage({ type: 'FRAME_RENDERED', id, frameIndex: sequence, bitmap }, { transfer: [bitmap] });
+      }
+    }
+  } catch (err) { self.postMessage({ type: 'ERROR', id, error: err.message }); }
+  finally { t.isRendering = false; }
+}
+
+self.onmessage = async (e) => {
+  const { type, id, ...p } = e.data;
+  try {
+    if (type === 'START_VIDEO' || type === 'START_PNG_SEQUENCE') {
+      await loadLibraries(p.rendererType, p.spineVersion, p.libraryBaseUrl);
+      self.useNonePMA = (p.rendererType === 'spine' && p.alphaMode !== 'unpack');
+      self.wantFlipYBitmap = (p.rendererType === 'live2d');
+      const canvas = new OffscreenCanvas(p.width, p.height);
+      const renderCanvas = new OffscreenCanvas(p.width, p.height);
+      const compositeCtx = canvas.getContext('2d');
+      if (!compositeCtx) throw new Error('Failed to create 2D context. The resolution might be too high.');
+      let renderer;
+      if (p.rendererType === 'live2d') {
+        renderer = new WorkerLive2DRenderer(renderCanvas);
+        if (!renderer.renderer) throw new Error('Failed to initialize Live2D renderer.');
+        if (p.textureFilter) {
+          renderer.setTextureFilter(p.textureFilter);
+        }
+        await renderer.load(p.modelUrl, p.fileNames?.motionFiles);
+        if (p.transform) {
+          renderer.marginX = p.marginX || 0;
+          renderer.marginY = p.marginY || 0;
+          renderer.setTransform(
+            p.transform.scale,
+            p.transform.x,
+            p.transform.y,
+            p.transform.rotation,
+            p.transform.originalWidth,
+            p.transform.originalHeight,
+            p.transform.screenBaseScale,
+            p.transform.ignoreTransform,
+            p.contentWidth,
+            p.contentHeight
+          );
+        }
+        if (p.syncState) renderer.applySyncState(p.syncState);
+        if (p.animName) await renderer.setAnimation(p.animName);
+        if (p.exprName) await renderer.setExpression(p.exprName);
+        renderer.applyOverrides();
+      } else {
+        renderer = new WorkerSpineRenderer(renderCanvas, self.spineLib);
+        if (p.textureFilter) {
+          renderer.setTextureFilter(p.textureFilter);
+        }
+        await renderer.load(p.selectedDir, p.fileNames, p.isFileJson, p.alphaMode);
+        if (!renderer._ctx) throw new Error('Failed to initialize Spine renderer context.');
+        renderer.marginX = p.marginX || 0;
+        renderer.marginY = p.marginY || 0;
+        renderer.setTransform(
+          p.transform?.scale,
+          p.transform?.x,
+          p.transform?.y,
+          p.transform?.rotation,
+          p.transform?.ignoreTransform,
+          p.contentWidth,
+          p.contentHeight,
+          p.transform?.screenBaseScale
+        );
+        if (!renderer._skeletons['0']) throw new Error('Main skeleton failed to load');
+        if (p.syncState) renderer.applySyncState(p.syncState);
+        if (p.animName) await renderer.setAnimation(p.animName);
+      }
+      let output = null, videoSource = null;
+      if (type === 'START_VIDEO') {
+        output = new Output({ format: new WebMOutputFormat(), target: new BufferTarget() });
+        videoSource = new CanvasSource(canvas, { codec: 'vp9', bitrate: p.bitrate, alpha: 'keep' });
+        output.addVideoTrack(videoSource);
+        await output.start();
+      }
+      currentTasks.set(id, { canvas, renderCanvas, compositeCtx, bgBitmap: p.bgBitmap, bgColor: p.bgColor, renderer, output, videoSource, fps: p.fps, lastSampleTime: 0, ready: true, renderQueue: [], isRendering: false });
+      self.postMessage({ type: 'READY', id, duration: renderer._currentDuration, fps: renderer.getFPS ? renderer.getFPS() : 60 });
+    } else if (type === 'RENDER_FRAME') {
+      const t = currentTasks.get(id);
+      if (t) { t.renderQueue.push(p); processQueue(id); }
+    } else if (type === 'FINISH_VIDEO') {
+      const t = currentTasks.get(id);
+      if (t) {
+        await t.output.finalize();
+        const buffer = t.output.target.buffer;
+        self.postMessage({ type: 'DONE_VIDEO', id, buffer }, { transfer: [buffer] });
+        if (t.bgBitmap) t.bgBitmap.close();
+        if (t.renderer?.dispose) t.renderer.dispose();
+        currentTasks.delete(id);
+      }
+    }
+  } catch (err) {
+    if (id) {
+      const t = currentTasks.get(id);
+      if (t) {
+        if (t.bgBitmap) t.bgBitmap.close();
+        if (t.renderer?.dispose) t.renderer.dispose();
+        currentTasks.delete(id);
+      }
+    }
+    self.postMessage({ type: 'ERROR', id, error: err?.message || String(err) });
+  }
+};

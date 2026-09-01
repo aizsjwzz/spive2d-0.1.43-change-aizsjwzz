@@ -1,0 +1,12 @@
+/.svelte-kit
+/build
+/node_modules
+/package
+/test/e2e/diffs/
+.DS_Store
+.env
+.env.*
+!.env.example
+package-lock.json
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*

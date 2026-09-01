@@ -1,0 +1,356 @@
+# Changelog
+
+## [0.1.43] - 2026-08-08
+
+### Added
+
+- Persist export settings across sessions
+
+### Changed
+
+- Replace Live2D library for Cubism 5.x compatibility
+
+## [0.1.42] - 2026-08-04
+
+### Fixed
+
+- Harden URL validation for query parameters to restrict loading to secure HTTPS URLs
+
+## [0.1.41] - 2026-08-04
+
+### Fixed
+
+- Enable loading of Live2D Cubism 2.1 models and motion files
+
+## [0.1.40] - 2026-07-31
+
+### Fixed
+
+- Improve Live2D mouse tracking accuracy, fixed-timestep update loop, and parameter snapshot handling
+- Enhance Spine and Live2D skeleton bounds calculation and viewport fitting logic
+
+## [0.1.39] - 2026-07-16
+
+### Added
+
+- Add option to skip loading Unity files
+- Persist window state on close and update default dimensions to 1200x800
+
+## [0.1.38] - 2026-07-14
+
+### Added
+
+- Scale move translation with zoom ratio and increase maximum scale to 16
+
+## [0.1.37] - 2026-07-14
+
+### Added
+
+- Support texture filtering (nearest, linear, bicubic, and lanczos) in renderers and exporters
+- Add Live2D mouse tracking, idle/breathing toggles, and resetting models to setup pose
+
+### Fixed
+
+- Enable antialiasing for Live2D preview renderer
+
+## [0.1.36] - 2026-06-28
+
+### Added
+
+- Support automatically sanitizing GitHub URLs to raw URLs when loading assets
+
+### Fixed
+
+- Improve detection of Tauri local assets to prevent load failures across domains
+
+## [0.1.35] - 2026-06-28
+
+### Added
+
+- Add experimental adaptive scaling and centering for Spine models
+
+### Fixed
+
+- Adjust blend functions and WebGL texture unpack state dynamically based on alpha mode in Spine rendering
+- Adjust default window dimension to 1280x720
+
+## [0.1.34] - 2026-06-22
+
+### Fixed
+
+- Prevent expression text from returning stale DOM value in release build
+
+## [0.1.33] - 2026-06-22
+
+### Fixed
+
+- Fix export filename without animation for layered sprites
+
+## [0.1.32] - 2026-06-22
+
+### Added
+
+- Support loading and rendering layered sprites from Unity asset bundles
+
+## [0.1.31] - 2026-06-20
+
+### Added
+
+- Hide console window when spawning child processes on Windows
+
+## [0.1.30] - 2026-06-20
+
+### Added
+
+- Support loading Live2D and Spine models from Unity asset bundles
+
+## [0.1.29] - 2026-06-04
+
+### Added
+
+- Automatically hide mozaiku attachments on load
+- Auto-select idle/wait animation as fallback on model switch
+
+## [0.1.28] - 2026-05-23
+
+### Added
+
+- Add button to reset parameter and property overrides in sidebar
+
+## [0.1.27] - 2026-05-23
+
+### Added
+
+- Automatically hide MaskMosaic attachments on load
+- Toggle slider parameters between min/max via label clicks and support batch dragging
+- Add settings button to sidebar and unify slider and panel styles
+
+## [0.1.26] - 2026-05-15
+
+### Changed
+
+- Clean up unnecessary polyfills and mocks in worker environment for better performance
+
+## [0.1.25] - 2026-05-15
+
+### Added
+
+- Implement logarithmic animation speed control for finer adjustments
+- Enhance cache clearing logic and standardize character transform controls
+
+### Fixed
+
+- Resolve Spine transparency rendering artifacts and incorrect alpha blending
+- Fix exporter worker stability and file saving errors in production
+- Stabilize Live2D state synchronization and update timing
+- Exclude internal mask skins from initial selection in Spine models
+
+## [0.1.24] - 2026-04-20
+
+### Added
+
+- Enhance Spine parameter overrides and state synchronization
+
+### Fixed
+
+- Stabilize Spine attachment visibility and simplify restoration logic
+
+## [0.1.23] - 2026-04-14
+
+### Fixed
+
+- Unify Spine export transform and movement scaling with Live2D
+- Synchronize Spine canvas size with window resize
+
+## [0.1.22] - 2026-04-14
+
+### Fixed
+
+- Ignore missing atlas regions to prevent loading failures
+- Handle missing Spine textures with fallback and prevent renderer crashes
+
+### Changed
+
+- Restructured Spine renderer architecture and consolidated logic for better maintainability
+
+## [0.1.21] - 2026-04-13
+
+### Added
+
+- Use folder name for merged assets instead of generic label
+
+### Fixed
+
+- Improved Spine sequential skeleton loading and asset handling
+- Numerical sorting for sequential assets
+- Sanitization of malformed Spine atlas files
+
+## [0.1.20] - 2026-04-12
+
+### Added
+
+- Support merging sequential Spine assets
+- Support foreground layer sorting via `_fg` filename suffix
+
+## [0.1.19] - 2026-03-31
+
+### Fixed
+
+- Resolve worker bundling and library loading issues in production environments
+
+## [0.1.18] - 2026-03-30
+
+### Added
+
+- Refactored export pipeline with worker pooling and renderer synchronization for improved stability and performance
+
+### Fixed
+
+- Trim atlas region names to prevent lookup failures
+
+## [0.1.17] - 2026-03-22
+
+### Added
+
+- Support playback speed in animation and image sequence exports
+- Clear cache functionality and refined settings layout
+
+### Fixed
+
+- Optimized export tab preview performance for large models
+
+## [0.1.16] - 2026-03-20
+
+### Added
+
+- Reactive character transform and redesigned export UI
+- Overhauled export preview with interactive zoom, pan, and full model context
+
+### Fixed
+
+- Robustness of Spine skeleton version detection
+- Included margins in export preview rendering
+
+## [0.1.15] - 2026-03-16
+
+### Fixed
+
+- Resolve missing spine attachments and UI state retention across models
+
+## [0.1.14] - 2026-03-16
+
+### Fixed
+
+- Ignore per-curve fade times during export to prevent static frames
+
+## [0.1.13] - 2026-03-15
+
+### Fixed
+
+- Resolve race conditions in Live2D renderer during rapid scene changes
+- Filter out 0-duration animations to prevent application freezes
+
+## [0.1.12] - 2026-03-15
+
+### Fixed
+
+- Re-published release due to immutable release constraints that affected v0.1.11 availability
+
+## [0.1.11] - 2026-03-15
+
+### Added
+
+- Export preview in settings dialog
+- Custom scale and separate margins support for export
+- Unified export notifications into queue with refined status UI
+
+### Fixed
+
+- Improved export accuracy by synchronizing renderer state and capturing zoom/pan
+- Fixed application of parameter and skin changes during export
+
+### Changed
+
+- Updated keyboard shortcuts for export and toggle
+
+## [0.1.10] - 2026-03-11
+
+### Added
+
+- Background export system with queue and worker support
+- Ctrl/Cmd+W and Ctrl/Cmd+Q shortcuts to exit application
+- Auto-detection of Spine skeleton format from file content
+- Support for .asset file extension
+- On-the-fly resizing of atlas textures to match declared sizes
+
+## [0.1.9] - 2026-03-09
+
+### Fixed
+
+- Prevent animation controller from shrinking below its content size
+- Fix canvas flash on scene switch
+- Gracefully handle missing atlas regions in Spine skeleton loading
+
+## [0.1.8] - 2026-03-06
+
+### Fixed
+
+- Resolve memory leaks, race conditions, and potential crashes
+
+## [0.1.7] - 2026-03-05
+
+### Fixed
+
+- Update and filter attachment checkboxes dynamically based on active skins and current animation
+- Allow trailing commas in Spine JSON data
+
+## [0.1.6] - 2026-03-05
+
+### Fixed
+
+- Prevent Drawables from disappearing when switching property categories
+
+## [0.1.5] - 2026-03-05
+
+### Fixed
+
+- Prevent permanent loss of drawables when toggling parts
+- Reapply animation when changing alpha mode
+
+## [0.1.4] - 2026-03-03
+
+### Fixed
+
+- Prevent permanent loss of attachments when toggling skins
+- Prevent overlapping models on rapid scene changes
+
+## [0.1.3] - 2026-03-03
+
+### Added
+
+- Persist selected animation across scenes
+- Persist selected skins across scenes
+- Update dimensions dynamically on window resize and scene change
+
+### Fixed
+
+- Calculate bounds accurately regardless of selected skin
+- Resolve NaN dimensions when filter is MipMap
+
+## [0.1.2] - 2026-03-03
+
+### Fixed
+
+- Fix initial display of hidden attachments
+
+## [0.1.1] - 2026-03-01
+
+### Fixed
+
+- Fixed error during export
+
+## [0.1.0] - 2026-03-01
+
+### Changed
+
+- Rewritten in Svelte

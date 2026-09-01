@@ -1,0 +1,646 @@
+<script>
+	import { onMount } from 'svelte';
+	import { appState } from '$lib/appState.svelte.js';
+	import { getRenderer, setRenderer } from '$lib/rendererStore.svelte.js';
+	import { createRenderer } from '$lib/renderer/createRenderer.js';
+	import { getSortableKey, findMaxNumber, sanitizeInputUrl } from '$lib/utils.js';
+	import { getAssetUrl } from '$lib/fileManager.js';
+	import { exportImage, exportAnimation, exportImageSequence } from '$lib/exporter.js';
+	import { createTransformAction } from '$lib/inputAction.js';
+	import { loadSetting } from '$lib/settings.js';
+	import { showNotification } from '$lib/notificationStore.svelte.js';
+	import { t } from '$lib/i18n.svelte.js';
+	import { getShortcuts } from '$lib/shortcutKeys.js';
+	import SettingsDialog from './SettingsDialog.svelte';
+	import Sidebar from './Sidebar.svelte';
+	import AnimationController from './AnimationController.svelte';
+	import Notification from './Notification.svelte';
+	import ExportQueue from './ExportQueue.svelte';
+	import { invoke, convertFileSrc } from '@tauri-apps/api/core';
+	import { listen } from '@tauri-apps/api/event';
+	import { downloadDir, join } from '@tauri-apps/api/path';
+	import { mkdir, exists } from '@tauri-apps/plugin-fs';
+	import { getCurrentWindow } from '@tauri-apps/api/window';
+
+	if (typeof window !== 'undefined') {
+	window.__TAURI__ = window.__TAURI__ || {};
+	window.__TAURI__.core = window.__TAURI__.core || {};
+	window.__TAURI__.core.convertFileSrc = convertFileSrc;
+	}
+
+	let dialogOpen = $state(true);
+	let showSpinner = $state(false);
+	let canvasContainer = $state();
+	let sidebar = $state();
+	let animController = $state();
+	let shortcuts = $state(getShortcuts());
+	const transformAction = createTransformAction();
+	let currentLoadId = 0;
+	let loadingRenderers = [];
+	let loadedFolder = '';
+
+	function refreshShortcuts() {
+	shortcuts = getShortcuts();
+	}
+
+	onMount(() => {
+	initBackground();
+	if (typeof window !== 'undefined') {
+	const params = new URLSearchParams(window.location.search);
+	const modelUrl = params.get('model');
+	if (modelUrl) {
+	processPath([modelUrl]);
+	}
+	window.__APP_STATE__ = appState;
+	window.__GET_RENDERER__ = getRenderer;
+	}
+	const unlistenProgress = listen('progress', (event) => {
+	appState.processing = event.payload;
+	showSpinner = event.payload;
+	if (showSpinner) {
+	dialogOpen = false;
+	}
+	});
+	const unlistenDragDrop = listen('tauri://drag-drop', async (event) => {
+	processPath(event.payload.paths);
+	});
+	return async () => {
+	(await unlistenProgress)();
+	(await unlistenDragDrop)();
+	};
+	});
+
+	$effect(() => {
+	const renderer = getRenderer();
+	if (renderer && appState.initialized) {
+	renderer.applyTransform(
+	appState.transform.scale,
+	appState.transform.moveX,
+	appState.transform.moveY,
+	appState.transform.rotate
+	);
+	}
+	});
+
+	function initBackground() {
+	const savedImagePath = loadSetting('spive2d_bg_image_path', '');
+	const savedColor = loadSetting('spive2d_bg_color', '');
+	if (savedImagePath) {
+	document.body.style.backgroundColor = '';
+	document.body.style.backgroundImage = `url("${getAssetUrl(savedImagePath)}")`;
+	document.body.style.backgroundSize = 'cover';
+	document.body.style.backgroundPosition = 'center';
+	} else if (savedColor) {
+	document.body.style.backgroundColor = savedColor;
+	document.body.style.backgroundImage = 'none';
+	}
+	}
+
+	async function processPath(paths) {
+	if (appState.processing || paths.length === 0) return;
+
+	const inputPath = paths[0];
+	const isReloadingSameFolder = inputPath === loadedFolder;
+
+	loadedFolder = inputPath;
+
+	const wasInitialized = appState.initialized;
+	appState.initialized = false;
+
+	try {
+	const inputPath = paths[0];
+	if (
+	!isReloadingSameFolder &&
+	!inputPath.startsWith('http://') &&
+	!inputPath.startsWith('https://')
+	) {
+	const configPath = await join(inputPath, 'spive2d_config.json');
+
+	if (await exists(configPath)) {
+	appState.fileSortMode = 'config';
+	}
+	}
+	let dirFiles = {};
+	const isLocalUnixPath = inputPath.startsWith('/') && (
+        inputPath.startsWith('/Users/') || 
+        inputPath.startsWith('/home/') || 
+        inputPath.startsWith('/var/') || 
+        inputPath.startsWith('/tmp/') || 
+        inputPath.startsWith('/private/')
+      );
+      if (inputPath.startsWith('http://') || inputPath.startsWith('https://') || (inputPath.startsWith('/') && !isLocalUnixPath)) {
+        let unityRes = null;
+        let isUnity = false;
+        let shouldInvokeBackend = false;
+        try {
+          showSpinner = true;
+          let bytes;
+          if (inputPath.startsWith('http://') || inputPath.startsWith('https://')) {
+            const fetched = await invoke('fetch_url_bytes', { url: inputPath });
+            bytes = new Uint8Array(fetched);
+          } else {
+            const fetchRes = await fetch(inputPath);
+            if (!fetchRes.ok) {
+              throw new Error(`HTTP error status: ${fetchRes.status}`);
+            }
+            const buffer = await fetchRes.arrayBuffer();
+            bytes = new Uint8Array(buffer);
+          }
+          const header = String.fromCharCode(...bytes.slice(0, 8));
+          isUnity = header.startsWith("UnityFS") || header.startsWith("UnityWeb") || header.startsWith("UnityRaw");
+          if (isUnity && appState.skipUnity) {
+	throw new Error('Unsupported file type');
+	}
+	let hasArchive = false;
+	for (const p of paths) {
+	try {
+	const url = new URL(p, window.location.origin);
+	const pathname = url.pathname.toLowerCase();
+	if (pathname.endsWith('.zip') || pathname.endsWith('.7z')) {
+	hasArchive = true;
+	break;
+	}
+	} catch {}
+	}
+	shouldInvokeBackend = isUnity || hasArchive;
+	if (shouldInvokeBackend) {
+	    unityRes = await invoke('handle_urls', { urls: paths, mergeSequential: appState.mergeSequential, sortMode: appState.fileSortMode, skipUnity: appState.skipUnity });
+	}
+	} catch (e) {
+	console.error(e);
+	showNotification(e.message || String(e), 'error');
+	appState.initialized = wasInitialized;
+	return;
+	} finally {
+	showSpinner = false;
+	}
+	if (shouldInvokeBackend) {
+	if (unityRes && Object.keys(unityRes).length > 0) {
+	dirFiles = unityRes;
+	} else {
+	showNotification(t('noFilesFound'));
+	appState.initialized = wasInitialized;
+	return;
+	}
+	} else {
+	dirFiles = {};
+	for (const path of paths) {
+	let url;
+	try {
+	url = new URL(path, window.location.origin);
+	} catch {
+	continue;
+	}
+	const urlString = url.toString();
+	const lastSlashIndex = urlString.lastIndexOf('/');
+	const dirName = urlString.substring(0, lastSlashIndex + 1);
+	const fileNameWithExt = urlString.substring(lastSlashIndex + 1);
+	let baseName = fileNameWithExt;
+	let ext1 = '';
+	let ext2 = '';
+	if (fileNameWithExt.endsWith('.model3.json')) {
+	baseName = fileNameWithExt.substring(0, fileNameWithExt.length - '.model3.json'.length);
+	ext1 = '.model3.json';
+	ext2 = '.moc3';
+	} else if (fileNameWithExt.endsWith('.meta.json')) {
+	baseName = fileNameWithExt.substring(0, fileNameWithExt.length - '.meta.json'.length);
+	ext1 = '.meta.json';
+	ext2 = '';
+	} else if (fileNameWithExt.endsWith('.skel')) {
+	baseName = fileNameWithExt.substring(0, fileNameWithExt.length - '.skel'.length);
+	ext1 = '.skel';
+	ext2 = '.atlas';
+	} else if (fileNameWithExt.endsWith('.json')) {
+	baseName = fileNameWithExt.substring(0, fileNameWithExt.length - '.json'.length);
+	ext1 = '.json';
+	ext2 = '.atlas';
+	} else if (fileNameWithExt.endsWith('.asset')) {
+	baseName = fileNameWithExt.substring(0, fileNameWithExt.length - '.asset'.length);
+	ext1 = '.asset';
+	ext2 = '.atlas';
+	} else {
+	continue;
+	}
+	if (!dirFiles[dirName]) {
+	dirFiles[dirName] = [];
+	}
+	if (!dirFiles[dirName].some(item => item.name === baseName)) {
+	dirFiles[dirName].push({ name: baseName, mainExt: ext1, atlasExt: ext2, files: [], isMerged: false });
+	}
+	}
+	if (Object.keys(dirFiles).length === 0) {
+	appState.initialized = wasInitialized;
+	showNotification(t('invalidUrl'));
+	return;
+	}
+	}
+	} else {
+	    dirFiles = await invoke('handle_dropped_paths', { paths, mergeSequential: appState.mergeSequential, sortMode: appState.fileSortMode, skipUnity: appState.skipUnity });
+	}
+	const dirs = Object.keys(dirFiles);
+	dirs.sort((a, b) => {
+	const keyA = getSortableKey(a);
+	const keyB = getSortableKey(b);
+	return keyA < keyB ? -1 : keyA > keyB ? 1 : 0;
+      });
+      if (dirs.length === 0) {
+        appState.initialized = wasInitialized;
+        showNotification(t('noFilesFound'));
+        return;
+      }
+      appState.directories = {
+        files: dirFiles,
+        entries: dirs,
+        selectedDir: dirs[0],
+        selectedScene: 0,
+      };
+      const previousSkins = getRenderer()?.getPropertyItems?.('skins')?.filter(item => item.checked).map(item => item.name) || [];
+      disposeModel();
+      await initModel(previousSkins);
+      appState.initialized = true;
+      dialogOpen = false;
+    } catch (error) {
+      console.error('Error handling dropped path:', error);
+      appState.initialized = wasInitialized;
+      const errMsg = typeof error === 'string' ? error : (error?.message || String(error));
+      if (errMsg.startsWith('HTTP ')) {
+        showNotification(t('resourceNotFound'));
+      } else if (errMsg.includes('Unsupported file type')) {
+        showNotification(t('unsupportedFileType'));
+      } else if (errMsg.includes('No supported Spine') || errMsg.includes('No valid files or models')) {
+        showNotification(t('noSupportedModels'));
+      } else if (errMsg.includes('Invalid path')) {
+        showNotification(t('invalidPath'));
+      } else {
+        const inputPath = paths[0] || '';
+        const isUrl = inputPath.startsWith('http://') || inputPath.startsWith('https://');
+        if (isUrl) {
+          showNotification(t('invalidUrl'));
+        } else {
+          showNotification(errMsg);
+        }
+      }
+      showSpinner = false;
+    }
+  }
+
+  async function initModel(previousSkins = []) {
+    currentLoadId++;
+    const loadId = currentLoadId;
+    const previousAnimation = sidebar?.getSelectedAnimation() ?? '';
+    const previousAnimationName = sidebar?.getSelectedAnimationText() || '';
+    const { files, selectedDir, selectedScene } = appState.directories;
+    if (!files || !selectedDir) return;
+    const scenes = files[selectedDir];
+    if (!scenes || scenes.length === 0) return;
+    const fileNames = scenes[selectedScene];
+    const renderer = createRenderer(fileNames);
+    loadingRenderers.push(renderer);
+    const canvas = renderer.getCanvas();
+    if (canvasContainer && !canvasContainer.contains(canvas)) {
+      canvasContainer.appendChild(canvas);
+    }
+    if (renderer.setAlphaMode) {
+      renderer.setAlphaMode(appState.alphaMode);
+    }    
+    if (renderer.setTextureFilter) {
+      renderer.setTextureFilter(appState.textureFilter);
+    }
+    try {
+      await renderer.load(selectedDir, fileNames);
+    } catch (e) {
+      console.error(e);
+      loadingRenderers = loadingRenderers.filter(r => r !== renderer);
+      return;
+    }
+    if (loadId !== currentLoadId) {
+      loadingRenderers = loadingRenderers.filter(r => r !== renderer);
+      renderer.dispose();
+      return;
+    }
+    loadingRenderers = loadingRenderers.filter(r => r !== renderer);
+    setRenderer(renderer);
+    const rendererCanvas = renderer.getCanvas();
+    requestAnimationFrame(() => {
+      if (typeof renderer._revealCanvas !== 'function') rendererCanvas.style.opacity = '1';
+    });
+    const categories = renderer.getPropertyCategories();
+    appState.propertyCategory = categories[0] || 'parameters';
+    appState.resetTransform();
+    appState.resetAnimation();
+    if (previousSkins.length > 0 && renderer.getPropertyItems && 'applySkins' in renderer && typeof renderer.applySkins === 'function') {
+      const availableSkins = renderer.getPropertyItems('skins') || [];
+      const matchingSkins = previousSkins.filter(skinName => availableSkins.some(s => s.name === skinName));
+      if (matchingSkins.length > 0) {
+        renderer.applySkins(matchingSkins);
+      }
+    }
+    sidebar?.setSelectedExpression('');
+    sidebar?.refreshProperties();
+    const animations = renderer.getAnimations();
+    const keepSetupPose = appState.initialized && previousAnimation === '';
+		if (keepSetupPose) {
+		sidebar?.setSelectedAnimation('');
+		handleAnimationChange('');
+		} else if (animations.length > 0) {
+		let targetAnim = animations[0].value;
+		let foundMatch = false;
+		if (previousAnimationName) {
+		const match = animations.find(a => a.name === previousAnimationName);
+		if (match) {
+		targetAnim = match.value;
+		foundMatch = true;
+		}
+		}
+		if (!foundMatch) {
+		let idleMatch = null;
+		idleMatch = animations.find(a => {
+		const val = a.value || '';
+		return val.startsWith('Idle,') || val.startsWith('idle,');
+		});
+		if (!idleMatch) {
+		idleMatch = animations.find(a => {
+		const base = (a.name || '').split('.')[0].toLowerCase();
+		return base.startsWith('idle') || base.startsWith('wait') || base.endsWith('_idle') || base.endsWith('_wait') ;
+		});
+		}
+		if (idleMatch) {
+		targetAnim = idleMatch.value;
+		}
+		}
+		sidebar?.setSelectedAnimation(targetAnim);
+		handleAnimationChange(targetAnim);
+		} else {
+		sidebar?.setSelectedAnimation('');
+		handleAnimationChange('');
+		}
+		}
+
+		function disposeModel() {
+		currentLoadId++;
+		const renderer = getRenderer();
+		if (renderer) {
+		renderer.dispose();
+		const canvas = renderer.getCanvas();
+		if (canvasContainer?.contains(canvas)) {
+		canvasContainer.removeChild(canvas);
+		}
+		setRenderer(null);
+		}
+		for (const r of loadingRenderers) {
+		r.dispose();
+		const canvas = r.getCanvas();
+		if (canvasContainer?.contains(canvas)) {
+		canvasContainer.removeChild(canvas);
+		}
+		}
+		loadingRenderers = [];
+		}
+
+		async function handleFileSortModeChange() {
+		console.log('[SORT DEBUG] handleFileSortModeChange triggered');
+		console.log('[SORT DEBUG] loadedFolder:', loadedFolder);
+
+		if (!loadedFolder) return;
+
+		console.log('[SORT DEBUG] reloading folder:', loadedFolder);
+		await processPath([loadedFolder]);
+		}
+
+		function handleDirChange(e) {
+		const newDir = e.target.value;
+		const oldDir = appState.directories.selectedDir;
+		const oldScenes = appState.directories.files[oldDir] || [];
+		const currentSceneStr = oldScenes.length > 0 && appState.directories.selectedScene >= 0 && appState.directories.selectedScene < oldScenes.length ? oldScenes[appState.directories.selectedScene].name : '';
+    const maxNumber = findMaxNumber(currentSceneStr || '');
+    appState.directories.selectedDir = newDir;
+    const scenes = appState.directories.files[newDir] || [];    
+    let index = -1;
+    if (maxNumber !== null) {
+      index = scenes.findIndex(item => String(item.name).includes(String(maxNumber)));
+    }
+    appState.directories.selectedScene = index === -1 ? 0 : index;
+    const previousSkins = getRenderer()?.getPropertyItems?.('skins')?.filter(item => item.checked).map(item => item.name) || [];
+    disposeModel();
+    initModel(previousSkins);
+  }
+
+  function handleSceneChange(e) {
+    const idx = e.target.selectedIndex;
+    appState.directories.selectedScene = idx;
+    const previousSkins = getRenderer()?.getPropertyItems?.('skins')?.filter(item => item.checked).map(item => item.name) || [];
+    disposeModel();
+    initModel(previousSkins);
+  }
+
+  function handleAnimationChange(value) {
+    const renderer = getRenderer();
+    renderer?.setAnimation(value);
+    if (appState.animation.paused) {
+      animController?.resetProgress();
+      requestAnimationFrame(() => {
+        renderer?.seekAnimation(0);
+      });
+    }
+    sidebar?.refreshProperties();
+  }
+
+  function handleExpressionChange(value) {
+    getRenderer()?.setExpression(value);
+  }
+
+  function handleKeyDown(e) {
+    if (document.activeElement?.matches('input, textarea')) return;
+    const key = e.key.toLowerCase();    
+    if ((key === 'w' || key === 'q') && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      getCurrentWindow().close();
+      return;
+    }
+    if (e.key !== shortcuts.toggleDialog && !appState.initialized) return;
+    if (e.key === shortcuts.prevDir) { navigateSelector('dirSelector', -1, handleDirChange); }
+    else if (e.key === shortcuts.nextDir) { navigateSelector('dirSelector', 1, handleDirChange); }
+    else if (e.key === shortcuts.prevScene) { navigateSelector('sceneSelector', -1, handleSceneChange); }
+    else if (e.key === shortcuts.nextScene) { navigateSelector('sceneSelector', 1, handleSceneChange); }
+    else if (e.key === shortcuts.prevAnim) { sidebar?.navigateAnimation(-1); }
+    else if (e.key === shortcuts.nextAnim) { sidebar?.navigateAnimation(1); }
+    else if (e.key === shortcuts.exportImage) { doExportImage(); }
+    else if (e.key === shortcuts.exportImageSeq) { doExportImageSequence(); }
+    else if (e.key === shortcuts.exportAnim) { doExportAnimation(); }
+    else if (e.key === shortcuts.toggleDialog) { toggleDialog(); }
+    else if (e.key === shortcuts.addToList) {
+      invoke('append_to_list', { text: getSceneText() }).then(() => {
+        showNotification(t('addedToList'), 'success');
+      });
+    }
+    else { return; }
+    focusBody();
+  }
+
+  function navigateSelector(selectorId, delta, handler) {
+    if(selectorId === 'sceneSelector') {
+      const ops = appState.directories.files[appState.directories.selectedDir] || [];
+      if(ops.length <= 1) return;
+      const newIndex = (appState.directories.selectedScene + delta + ops.length) % ops.length;
+      handler({ target: { selectedIndex: newIndex }});
+    } else if (selectorId === 'dirSelector') {
+       const ops = appState.directories.entries || [];
+       if(ops.length <= 1) return;
+       const currentIndex = ops.indexOf(appState.directories.selectedDir);
+       const newIndex = (currentIndex + delta + ops.length) % ops.length;
+       handler({ target: { value: ops[newIndex] }});
+    }
+  }
+
+  function toggleDialog() {
+    if (showSpinner) return;
+    dialogOpen = !dialogOpen;
+  }
+
+  function focusBody() {
+    if (document.activeElement !== document.body) {
+      if (document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+      }
+      document.body.focus();
+    }
+  }
+
+  function doExportImage() {
+    const sceneText = getSceneText();
+    let animText = sidebar?.getSelectedAnimationText() || '';
+    if (!animText && sidebar) {
+      animText = sidebar.getSelectedExpressionText() || '';
+    }
+    exportImage(sceneText, animText);
+  }
+
+  function doExportAnimation() {
+    if (getRenderer()?.rendererType === 'layered') {
+      return;
+    }
+    const sceneText = getSceneText();
+    const animText = sidebar?.getSelectedAnimationText() || '';
+    const animValue = sidebar?.getSelectedAnimation?.() || '';
+    const exprValue = sidebar?.getSelectedExpression?.() || '';
+    exportAnimation(sceneText, animText, animValue, exprValue);
+  }
+
+  async function doExportImageSequence() {
+    if (getRenderer()?.rendererType === 'layered') {
+      return;
+    }
+    const sceneText = getSceneText();
+    const animText = sidebar?.getSelectedAnimationText() || '';
+    const animValue = sidebar?.getSelectedAnimation?.() || '';
+    const safeName = animText ? animText.split('.')[0] : 'sequence';
+    const baseDir = await downloadDir();
+    const exportBaseDir = await join(baseDir, 'spive2d_export');
+    const folderName = `${sceneText}_${safeName}`;
+    const targetDir = await join(exportBaseDir, folderName);
+    try {
+      await mkdir(targetDir, { recursive: true });
+    } catch (err) {
+      console.error('Failed to create export directory:', err);
+    }
+    const exprValue = sidebar?.getSelectedExpression?.() || '';
+    exportImageSequence(targetDir, sceneText, animText, animValue, exprValue);
+  }
+
+  function getSceneText() {
+    const scenes = appState.directories.files?.[appState.directories.selectedDir] || [];
+    const currentSceneStr = scenes.length > 0 && appState.directories.selectedScene >= 0 && appState.directories.selectedScene < scenes.length ? scenes[appState.directories.selectedScene].name : '';
+    return currentSceneStr ? currentSceneStr.split('/').filter(Boolean).pop().replace(/^\u200B/, '') : 'scene';
+  }
+
+  function handleResize() {
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    appState.viewport = { width: w, height: h };
+    const renderer = getRenderer();
+    if (renderer && appState.initialized) {
+      renderer.resize(w, h);
+      renderer.applyTransform(
+        appState.transform.scale,
+        appState.transform.moveX,
+        appState.transform.moveY,
+        appState.transform.rotate
+      );
+    }
+  }
+
+  function handleContextMenu(e) {
+    e.preventDefault();
+  }
+</script>
+
+<svelte:window
+  onresize={handleResize}
+  onkeydown={handleKeyDown}
+/>
+
+{#if showSpinner}
+  <div id="spinner-backdrop">
+    <div id="spinner"></div>
+  </div>
+{/if}
+
+<div use:transformAction={{ appState, sidebar, animController, dialogOpen }}>
+  <SettingsDialog bind:open={dialogOpen} onPathSelected={processPath} onShortcutsChanged={refreshShortcuts} />
+  <Sidebar
+    bind:this={sidebar}
+    onDirChange={handleDirChange}
+    onSceneChange={handleSceneChange}
+    onAnimationChange={handleAnimationChange}
+    onExpressionChange={handleExpressionChange}
+    onSettingsClick={() => dialogOpen = true}
+	onFileSortModeChange={handleFileSortModeChange}
+  />
+  <div id="canvasContainer" bind:this={canvasContainer}></div>
+</div>
+
+<AnimationController bind:this={animController} />
+
+<ExportQueue />
+<Notification />
+
+<style>
+  #spinner-backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(3px);
+    z-index: 2999;
+  }
+
+  #spinner {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 80px;
+    height: 80px;
+    border: 8px solid #eee;
+    border-top: 8px solid #888;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+  }
+
+  #canvasContainer {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 0;
+  }
+
+  #canvasContainer :global(canvas) {
+    position: absolute;
+    top: 0;
+    left: 0;
+  }
+</style>
