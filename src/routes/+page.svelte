@@ -16,6 +16,7 @@
 	import AnimationController from './AnimationController.svelte';
 	import Notification from './Notification.svelte';
 	import ExportQueue from './ExportQueue.svelte';
+  import RightToolbar from './RightToolbar.svelte';
 	import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 	import { listen } from '@tauri-apps/api/event';
 	import { downloadDir, join } from '@tauri-apps/api/path';
@@ -596,6 +597,7 @@
     onSettingsClick={() => dialogOpen = true}
 	onFileSortModeChange={handleFileSortModeChange}
   />
+  <RightToolbar />
   <div id="canvasContainer" bind:this={canvasContainer}></div>
 
   {#if appState.readConfig}

@@ -24,7 +24,7 @@ export function createTransformAction() {
       sidebar?.setSidebarVisible?.(e.clientX <= SIDEBAR_WIDTH);
       animController?.showOnHover?.(e.clientY);
       document.body.style.cursor = 'default';
-      if (e.clientX >= window.innerWidth - SIDEBAR_WIDTH) {
+      if (e.clientX >= window.innerWidth - SIDEBAR_WIDTH && e.clientX < window.innerWidth - 20) {
         document.body.style.cursor = `url("cursors/rotate_right.svg"), auto`;
       }
       if (!mouseDown) return;
@@ -36,7 +36,7 @@ export function createTransformAction() {
           moveX: transform.moveX + (e.clientX - startX),
           moveY: transform.moveY + (e.clientY - startY),
         };
-      } else if (e.clientX >= window.innerWidth - SIDEBAR_WIDTH && (window.innerHeight - e.clientY > CONTROLLER_HEIGHT)) {
+      } else if  (e.clientX >= window.innerWidth - SIDEBAR_WIDTH && e.clientX < window.innerWidth - 20 && (window.innerHeight - e.clientY > CONTROLLER_HEIGHT)) {
         const delta = ((e.clientY - startY) / window.innerHeight) * 180.0;
         appState.transform = { ...transform, rotate: transform.rotate + delta };
       }
