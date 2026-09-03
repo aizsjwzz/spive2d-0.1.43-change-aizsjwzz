@@ -3,16 +3,27 @@
 	import { getRenderer } from '$lib/rendererStore.svelte.js';
 	import { t } from '$lib/i18n.svelte.js';
 	import { saveSetting } from '$lib/settings.js'; -->
+
 <script>
 	let visible = $state(false);
 
-	let files = $state([
+	let renderOrderfiles = $state([
 		"cardspine_10064_2_BG_123456",
 		"cardspine_10064_2_2",
+		"cardspine_10064_2_3",
 		"cardspine_10064_2_1"
 	]);
 
 	let selectedIndex = $state(0);
+
+	// 模拟 JSON 中 info 的数据
+	let gameName = $state("星落");
+	let platform = $state("Android");
+	let appId = $state("");
+	let roleName = $state("菲莉亚/Filia");
+	let skinName = $state("二阶立绘");
+
+	let editMode = $state(false);
 
 	function toggle() {
 		visible = !visible;
@@ -25,21 +36,36 @@
 	function moveUp() {
 		if (selectedIndex <= 0) return;
 
-		const temp = files[selectedIndex];
-		files[selectedIndex] = files[selectedIndex - 1];
-		files[selectedIndex - 1] = temp;
+		const temp = renderOrderfiles[selectedIndex];
+		renderOrderfiles[selectedIndex] = renderOrderfiles[selectedIndex - 1];
+		renderOrderfiles[selectedIndex - 1] = temp;
 
 		selectedIndex--;
 	}
 
 	function moveDown() {
-		if (selectedIndex >= files.length - 1) return;
+		if (selectedIndex >= renderOrderfiles.length - 1) return;
 
-		const temp = files[selectedIndex];
-		files[selectedIndex] = files[selectedIndex + 1];
-		files[selectedIndex + 1] = temp;
+		const temp = renderOrderfiles[selectedIndex];
+		renderOrderfiles[selectedIndex] = renderOrderfiles[selectedIndex + 1];
+		renderOrderfiles[selectedIndex + 1] = temp;
 
 		selectedIndex++;
+	}
+
+	function saveFileInfo() {
+		// 暂时只做 UI
+		console.log({
+			gameName,
+			platform,
+			appId,
+			roleName,
+			skinName
+		});
+	}
+
+	function writeConfig() {
+		console.log('写入配置:', $state.snapshot(renderOrderfiles));
 	}
 </script>
 
@@ -51,21 +77,109 @@
 
 	{#if visible}
 		<div id="panel">
+
 			<div id="title">
-				文件信息
+				扩展功能
 			</div>
 
-			<div id="orderTitle">
-				渲染顺序
+			<div id="subtitle">
+				文件信息:
 			</div>
 
-			<div id="fileList">
-				{#each files as file, index}
+			<div id="fileInfo">
+
+				<!-- 游戏名称 -->
+				<div class="infoGameName">
+					{#if editMode}
+						<input
+							type="text"
+							bind:value={gameName}
+						/>
+					{:else}
+						<span>{gameName || "无数据"}</span>
+					{/if}
+				</div>
+
+				<!-- 平台 / 包名 -->
+				<div class="infoSub">
+					{#if editMode}
+						<input
+							type="text"
+							bind:value={platform}
+							placeholder="平台"
+						/>
+
+						<input
+							type="text"
+							bind:value={appId}
+							placeholder="包名"
+						/>
+					{:else}
+						<span>{platform || "无数据"}</span>
+						<span>{appId || "无数据"}</span>
+					{/if}
+				</div>
+
+				<!-- 角色 -->
+				<div class="infoItem">
+					<span class="infoLabel">角色：</span>
+
+					{#if editMode}
+						<input
+							type="text"
+							bind:value={roleName}
+						/>
+					{:else}
+						<span>{roleName || "无数据"}</span>
+					{/if}
+				</div>
+
+				<!-- 皮肤 -->
+				<div class="infoItem">
+					<span class="infoLabel">皮肤：</span>
+
+					{#if editMode}
+						<input
+							type="text"
+							bind:value={skinName}
+						/>
+					{:else}
+						<span>{skinName || "无数据"}</span>
+					{/if}
+				</div>
+
+				<!-- 编辑 / 保存 -->
+				<div id="fileInfoButtons">
+					<label class="editCheck">
+						<input
+							type="checkbox"
+							bind:checked={editMode}
+						/>
+						<span>编辑</span>
+					</label>
+
+					<button onclick={saveFileInfo}>
+						保存
+					</button>
+				</div>
+
+			</div>
+
+			<div id="subtitle">
+				Alpha 模式：
+			</div>
+
+			<div id="subtitle">
+				渲染顺序控制台:
+			</div>
+
+			<div id="renderOrderfileList">
+				{#each renderOrderfiles as file, index}
 					<!-- svelte-ignore a11y_no_static_element_interactions -->
 					<!-- svelte-ignore a11y_click_events_have_key_events -->
 					<div
 						class:selected={index === selectedIndex}
-						class="fileItem"
+						class="renderOrderfileItem"
 						onclick={() => selectFile(index)}
 					>
 						{file}
@@ -73,10 +187,12 @@
 				{/each}
 			</div>
 
-			<div id="buttons">
-				<button onclick={moveUp}>↑</button>
-				<button onclick={moveDown}>↓</button>
+			<div id="renderOrderbuttons">
+				<button onclick={moveUp}>上移</button>
+				<button onclick={moveDown}>下移</button>
+				<button onclick={writeConfig}>写入配置</button>
 			</div>
+
 		</div>
 	{/if}
 
@@ -103,76 +219,199 @@
 	border-radius: 5px 0 0 6px;
 	color: #ccc;
 	cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  line-height: 1; 
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	line-height: 1;
 }
 
 #panel {
 	width: 220px;
 	height: 100vh;
-  padding: 5px;
+	padding: 5px;
 	background: var(--sidebar-color);
 	border-left: 1px solid #444;
-  z-index: 100;
-  display: flex;
-  flex-direction: column;
+	z-index: 100;
+	display: flex;
+	flex-direction: column;
 }
-
 
 #title {
 	height: 20px;
 	display: flex;
 	align-items: center;
 	padding-left: 0px;
-	color: #ffffff;
+	color: #fff;
 	font-size: 20px;
 }
 
-#orderTitle {
-	padding:12px 0 6px 12px;
-	color:#ccc;
-	border-bottom:1px solid #444;
+#subtitle {
+	padding: 1px 0 1px 10px;
+	color: #fff;
+	border-bottom: 1px solid #444;
 }
 
-#fileList {
-	padding-top:2px;
+/* 文件信息 */
+#fileInfo {
+	padding: 5px 5px 2px 10px;
+	margin: 0;
 }
 
-.fileItem {
-	padding:5px 2px;
-	color:#ccc;
-	cursor:pointer;
-  display: flex;
-  align-items: center; 
+/* 游戏名称 */
+.infoGameName {
+	color: #fff;
+	font-size: 24px;
+	margin-bottom: 0px;
+	line-height: 1.1;
+		text-shadow: 
+		-1px -1px 0 #000,
+		1px -1px 0 #000,
+		-1px 1px 0 #000,
+		1px 1px 0 #000;
 
-  font-size: 14px;
-  line-height: 1.2;
-
-  background: rgba(255, 255, 255, 0.06);
-  border-radius: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.1);  
 }
 
-.fileItem:hover {
-	background:#333;
+/* 平台 / 包名 */
+.infoSub {
+	display: flex;
+	gap: 12px;
+	color: #fff;
+	font-size: 11px;
+	line-height: 1;
+	margin-top: 0px;
+	margin-bottom: 0px;
 }
 
-.fileItem.selected {
-	background:#444;
-	color:#fff;
+/* 角色 / 皮肤 */
+.infoItem {
+	display: flex;
+	padding: 1px 1px;
+	align-items: center;
+	height: 22px;
+	min-height: 18px;
+	margin-bottom: 2px;
+	color: #fff;
+	font-size: 18px;
+	line-height: 21px;
 }
 
-#buttons {
-	display:flex;
-	gap:8px;
-	padding:12px;
+.infoLabel {
+	color: #f1f1f1;
+	margin-right: 4px;
 }
 
-#buttons button {
-	width:40px;
-	height:30px;
+/* 编辑 / 保存 */
+#fileInfoButtons {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	margin-top: 0px;
+	height: 25px;
 }
 
+.editCheck {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	color: #ccc;
+	font-size: 13px;
+	cursor: pointer;
+}
+
+#fileInfoButtons button {
+	padding: 2px 20px;
+	font-size: 13px;
+	background: var(--sidebar-color);
+	border: var(--border-color);
+	border-radius: 4px;
+	color: #ccc;
+	cursor: pointer;
+}
+
+#fileInfoButtons button:hover {
+	background: #555;
+}
+
+/* 编辑输入框 */
+#fileInfo input {
+	box-sizing: border-box;
+	min-width: 0;
+	padding: 1px 1px;
+	background: #222;
+	border: 1px solid #555;
+	border-radius: 3px;
+	color: #fff;
+	outline: none;
+}
+
+.infoGameName input {
+	width: 100%;
+	font-size: 20px;
+}
+
+.infoSub input {
+	width: 50%;
+	font-size: 11px;
+	color: #fff;
+}
+
+.infoItem input {
+	flex: 1;
+	font-size: 15px;
+}
+
+#fileInfo input:focus {
+	border-color: #777;
+}
+
+/* 渲染顺序 */
+#renderOrderfileList {
+	padding-top: 2px;
+}
+
+.renderOrderfileItem {
+	padding: 5px 5px;
+	color: #ccc;
+	cursor: pointer;
+	display: flex;
+	align-items: center;
+	font-size: 14px;
+	line-height: 1.2;
+	background: rgba(255, 255, 255, 0.06);
+	border-radius: 6px;
+	border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.renderOrderfileItem:hover {
+	background: #333;
+}
+
+.renderOrderfileItem.selected {
+	background: #444;
+	color: #fff;
+}
+
+#renderOrderbuttons {
+	display: flex;
+	gap: 2px;
+	padding: 2px 0px;
+	width: 100%;
+}
+
+#renderOrderbuttons button:hover {
+	background-color: #555;
+}
+
+#renderOrderbuttons button {
+	flex: 1;
+	padding: 3px 2px;
+	font-size: 15px;
+	background: var(--sidebar-color);
+	border: var(--border-color);
+	border-radius: 4px;
+	color: #ccc;
+	cursor: pointer;
+	transition: background 0.2s;
+	white-space: nowrap;
+}
 </style>
