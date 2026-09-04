@@ -352,6 +352,7 @@
 			onclick={() => selectFile(index)}
 		>
 			<input
+				class="renderVisibleCheck"
 				type="checkbox"
 				checked={renderVisible[file]}
 				onchange={() => {
@@ -570,7 +571,13 @@
 
 /* 渲染顺序 */
 #renderOrderfileList {
-	padding-top: 2px;
+	padding-top: 4px;
+}
+
+.renderVisibleCheck {
+	width: 15.5px;
+	height: 15.5px;
+	margin-right: 4px;
 }
 
 .renderOrderfileItem {
