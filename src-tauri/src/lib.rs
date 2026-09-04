@@ -5,6 +5,56 @@ use std::path::Path;
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager};
 
+
+#[tauri::command]
+fn write_draworder_config(
+    dir_path: String,
+    draworder: Vec<String>,
+) -> Result<(), String> {
+
+    let config_path = Path::new(&dir_path)
+        .join("spive2d_config.json");
+
+
+    let mut config = if config_path.exists() {
+
+        let text = fs::read_to_string(&config_path)
+            .map_err(|e| e.to_string())?;
+
+        serde_json::from_str::<serde_json::Value>(&text)
+            .map_err(|e| e.to_string())?
+
+    } else {
+
+        serde_json::json!({})
+
+    };
+
+
+    if let Some(obj) = config.as_object_mut() {
+
+        obj.insert(
+            "draworder".to_string(),
+            serde_json::json!(draworder)
+        );
+
+    }
+
+
+    let text = serde_json::to_string_pretty(&config)
+        .map_err(|e| e.to_string())?;
+
+
+    fs::write(
+        config_path,
+        text
+    )
+    .map_err(|e| e.to_string())?;
+
+
+    Ok(())
+}
+
 #[derive(Default)]
 struct AppState {
     temp_dirs: Mutex<Vec<tempfile::TempDir>>,
@@ -1953,7 +2003,10 @@ fn process_directory(dir_path: &Path, base_path: &Path, merge_sequential: bool, 
             all_file_groups.extend(subdir_file_groups);
         }
     }
+   // all_file_groups.sort_unstable_by(|a, b| compare_natural(&a.name, &b.name));
+   if sort_mode != "config" {
     all_file_groups.sort_unstable_by(|a, b| compare_natural(&a.name, &b.name));
+    }
     Ok(all_file_groups)
 }
 
@@ -1985,6 +2038,7 @@ pub fn run() {
             handle_urls,
             append_to_list,
             clear_cache,
+            write_draworder_config,
             fetch_url_bytes
         ])
         .plugin(tauri_plugin_dialog::init())

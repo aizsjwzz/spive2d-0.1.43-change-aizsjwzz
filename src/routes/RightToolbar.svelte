@@ -5,23 +5,32 @@
 	import { saveSetting } from '$lib/settings.js'; -->
 
 <script>
+	import { appState } from '$lib/appState.svelte.js';
+	import { getRenderer } from '$lib/rendererStore.svelte.js';
+	import { invoke } from '@tauri-apps/api/core';
+	import { showNotification } from '$lib/notificationStore.svelte.js';
+
 	let visible = $state(false);
 
-	let renderOrderfiles = $state([
-		"cardspine_10064_2_BG_123456",
-		"cardspine_10064_2_2",
-		"cardspine_10064_2_3",
-		"cardspine_10064_2_1"
-	]);
+	let renderOrderfiles = $state([]);
 
+		$effect(() => {
+			const files =
+				appState.directories.files?.[appState.directories.selectedDir]?.[
+					appState.directories.selectedScene
+				]?.files ?? [];
+
+			renderOrderfiles = [...files].reverse();
+	});
+		
 	let selectedIndex = $state(0);
 
 	// 模拟 JSON 中 info 的数据
-	let gameName = $state("星落");
-	let platform = $state("Android");
+	let gameName = $state("");
+	let platform = $state("");
 	let appId = $state("");
-	let roleName = $state("菲莉亚/Filia");
-	let skinName = $state("二阶立绘");
+	let roleName = $state("");
+	let skinName = $state("");
 
 	let editMode = $state(false);
 
@@ -36,9 +45,53 @@
 	function moveUp() {
 		if (selectedIndex <= 0) return;
 
-		const temp = renderOrderfiles[selectedIndex];
-		renderOrderfiles[selectedIndex] = renderOrderfiles[selectedIndex - 1];
-		renderOrderfiles[selectedIndex - 1] = temp;
+		const scene =
+			appState.directories.files?.[appState.directories.selectedDir]?.[
+				appState.directories.selectedScene
+			];
+
+		if (!scene?.files) return;
+
+		const uiFiles = [...scene.files].reverse();
+
+		[
+			uiFiles[selectedIndex],
+			uiFiles[selectedIndex - 1]
+		] = [
+			uiFiles[selectedIndex - 1],
+			uiFiles[selectedIndex]
+		];
+
+		scene.files = uiFiles.reverse();
+
+		const renderer = getRenderer();
+
+		if (renderer?._skeletons) {
+
+			if (!renderer._customDrawOrder) {
+				renderer._customDrawOrder =
+					Object.keys(renderer._skeletons);
+			}
+
+			const order = renderer._customDrawOrder;
+
+			[
+				order[selectedIndex],
+				order[selectedIndex - 1]
+			] = [
+				order[selectedIndex - 1],
+				order[selectedIndex]
+			];
+
+			console.log('new order:', order);
+
+			renderer.render(0);
+		}
+
+		if (renderer?._fileNames?.files) {
+			renderer._fileNames.files = [...scene.files];
+			renderer.render(0);
+		}
 
 		selectedIndex--;
 	}
@@ -46,9 +99,53 @@
 	function moveDown() {
 		if (selectedIndex >= renderOrderfiles.length - 1) return;
 
-		const temp = renderOrderfiles[selectedIndex];
-		renderOrderfiles[selectedIndex] = renderOrderfiles[selectedIndex + 1];
-		renderOrderfiles[selectedIndex + 1] = temp;
+		const scene =
+			appState.directories.files?.[appState.directories.selectedDir]?.[
+				appState.directories.selectedScene
+			];
+
+		if (!scene?.files) return;
+
+		const uiFiles = [...scene.files].reverse();
+
+		[
+			uiFiles[selectedIndex],
+			uiFiles[selectedIndex + 1]
+		] = [
+			uiFiles[selectedIndex + 1],
+			uiFiles[selectedIndex]
+		];
+
+		scene.files = uiFiles.reverse();
+
+		const renderer = getRenderer();
+
+		if (renderer?._skeletons) {
+
+			if (!renderer._customDrawOrder) {
+				renderer._customDrawOrder =
+					Object.keys(renderer._skeletons);
+			}
+
+			const order = renderer._customDrawOrder;
+
+			[
+				order[selectedIndex],
+				order[selectedIndex + 1]
+			] = [
+				order[selectedIndex + 1],
+				order[selectedIndex]
+			];
+
+			console.log('new order:', order);
+
+			renderer.render(0);
+		}
+
+		if (renderer?._fileNames?.files) {
+			renderer._fileNames.files = [...scene.files];
+			renderer.render(0);
+		}
 
 		selectedIndex++;
 	}
@@ -64,8 +161,38 @@
 		});
 	}
 
-	function writeConfig() {
-		console.log('写入配置:', $state.snapshot(renderOrderfiles));
+	async function writeConfig() {
+
+	const draworder = [
+		...$state.snapshot(renderOrderfiles)
+	];
+
+
+	console.log(
+		'写入配置:',
+		draworder
+	);
+
+
+	try {
+
+		await invoke(
+			'write_draworder_config',
+			{
+				dirPath: appState.directories.selectedDir,
+				draworder
+			}
+		);
+
+		showNotification('配置写入成功');
+
+
+	} catch (error) {
+
+		showNotification('配置写入失败');
+
+	}
+
 	}
 </script>
 

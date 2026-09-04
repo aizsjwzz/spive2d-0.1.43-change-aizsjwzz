@@ -40,6 +40,7 @@ export class SpineRendererBase extends BaseRenderer {
     this._primaryCache = null;
     this._textureFilter = 'linear';
     this._loadedAtlases = [];
+    this._customDrawOrder = null;
   }
 
   async initCtx(alphaMode = 'pma') {
@@ -1147,6 +1148,9 @@ export class SpineRendererBase extends BaseRenderer {
   }
 
   _getSortedSkeletonKeys() {
+    if (this._customDrawOrder) {
+      return [...this._customDrawOrder];
+    }
     const sceneInfo = this._fileNames;
     return Object.keys(this._skeletons).sort((a, b) => {
       const getLayer = (k) => {
