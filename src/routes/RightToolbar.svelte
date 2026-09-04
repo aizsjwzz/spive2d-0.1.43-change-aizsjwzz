@@ -10,19 +10,61 @@
 	import { invoke } from '@tauri-apps/api/core';
 	import { showNotification } from '$lib/notificationStore.svelte.js';
 
-	let visible = $state(false);
+
+	let renderVisible = $state({});
+	let lastSceneKey = '';
 
 	let renderOrderfiles = $state([]);
 
-		$effect(() => {
-			const files =
-				appState.directories.files?.[appState.directories.selectedDir]?.[
-					appState.directories.selectedScene
-				]?.files ?? [];
+	let visible = $state(false);
 
-			renderOrderfiles = [...files].reverse();
+
+
+
+	$effect(() => {
+
+		const sceneKey =
+			`${appState.directories.selectedDir}_${appState.directories.selectedScene}`;
+
+
+		const files =
+			appState.directories.files?.[appState.directories.selectedDir]?.[
+				appState.directories.selectedScene
+			]?.files ?? [];
+
+
+		renderOrderfiles = [...files].reverse();
+
+
+		if (sceneKey !== lastSceneKey) {
+
+			lastSceneKey = sceneKey;
+
+
+			renderVisible = Object.fromEntries(
+				renderOrderfiles.map(file => [
+					file,
+					true
+				])
+			);
+
+		}
+
 	});
-		
+
+
+	$effect(() => {
+
+		for (const file of renderOrderfiles) {
+
+			if (renderVisible[file] === undefined) {
+				renderVisible[file] = true;
+			}
+
+		}
+
+	});
+	
 	let selectedIndex = $state(0);
 
 	// 模拟 JSON 中 info 的数据
@@ -300,19 +342,54 @@
 				渲染顺序控制台:
 			</div>
 
-			<div id="renderOrderfileList">
-				{#each renderOrderfiles as file, index}
-					<!-- svelte-ignore a11y_no_static_element_interactions -->
-					<!-- svelte-ignore a11y_click_events_have_key_events -->
-					<div
-						class:selected={index === selectedIndex}
-						class="renderOrderfileItem"
-						onclick={() => selectFile(index)}
-					>
-						{file}
-					</div>
-				{/each}
-			</div>
+<div id="renderOrderfileList">
+	{#each renderOrderfiles as file, index}
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<!-- svelte-ignore a11y_click_events_have_key_events -->
+		<div
+			class:selected={index === selectedIndex}
+			class="renderOrderfileItem"
+			onclick={() => selectFile(index)}
+		>
+			<input
+				type="checkbox"
+				checked={renderVisible[file]}
+				onchange={() => {
+
+					renderVisible[file] = !renderVisible[file];
+
+					const renderer = getRenderer();
+
+					if (renderer) {
+
+						const files = $state.snapshot(
+							renderer._fileNames.files
+						);
+
+						renderer._hiddenDrawOrder = {};
+
+						files.forEach((name, index) => {
+
+							if (renderVisible[name] === false) {
+								renderer._hiddenDrawOrder[index] = true;
+							}
+
+						});
+
+					}
+					// console.log(
+					// 	'hidden:',
+					// 	$state.snapshot(renderer._hiddenDrawOrder)
+					// );
+
+				}}
+				onclick={(e) => e.stopPropagation()}
+			/>
+
+			{file}
+		</div>
+	{/each}
+</div>
 
 			<div id="renderOrderbuttons">
 				<button onclick={moveUp}>上移</button>
@@ -353,7 +430,7 @@
 }
 
 #panel {
-	width: 220px;
+	width: 260px;
 	height: 100vh;
 	padding: 5px;
 	background: var(--sidebar-color);

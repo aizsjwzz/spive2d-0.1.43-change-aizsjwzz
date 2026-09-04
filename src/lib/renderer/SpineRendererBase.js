@@ -33,6 +33,7 @@ export class SpineRendererBase extends BaseRenderer {
 
   constructor(canvas, spineLib, isExport = false) {
     super(isExport);
+    this._hiddenDrawOrder = {};
     this._canvas = canvas;
     this._spine = spineLib;
     this._evidenceCache = new Map();
@@ -1102,6 +1103,9 @@ export class SpineRendererBase extends BaseRenderer {
     gl.clear(gl.COLOR_BUFFER_BIT);
     const sortedKeys = this._getSortedSkeletonKeys();
     for (const key of sortedKeys) {
+      if (this._hiddenDrawOrder?.[key]) {
+        continue;
+      }
       const { skeleton, state } = this._skeletons[key];
       if (delta > 0 && !this._paused) state.update(delta * this._speed);
       state.apply(skeleton);
