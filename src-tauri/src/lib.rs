@@ -9,6 +9,7 @@ use tauri::{AppHandle, Emitter, Manager};
 #[tauri::command]
 fn write_draworder_config(
     dir_path: String,
+    alpha_mode: String,
     draworder: Vec<String>,
 ) -> Result<(), String> {
 
@@ -36,6 +37,11 @@ fn write_draworder_config(
         obj.insert(
             "draworder".to_string(),
             serde_json::json!(draworder)
+        );
+
+        obj.insert(
+            "alphaMode".to_string(),
+            serde_json::json!(alpha_mode)
         );
 
     }

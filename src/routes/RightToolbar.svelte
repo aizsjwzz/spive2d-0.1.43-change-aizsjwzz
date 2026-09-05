@@ -172,7 +172,8 @@
 				'write_draworder_config',
 				{
 					dirPath: appState.directories.selectedDir,
-					draworder
+					draworder,
+					alphaMode
 				}
 			);
 			showNotification('配置写入成功');
