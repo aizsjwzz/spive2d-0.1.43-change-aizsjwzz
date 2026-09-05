@@ -141,7 +141,7 @@
 	}
 
 	async function writeConfig() {
-		const draworder = [...renderOrderfiles];
+		const draworder = [...displayOrder];
 
 		try {
 			await invoke(
