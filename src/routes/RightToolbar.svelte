@@ -10,71 +10,85 @@
 	import { invoke } from '@tauri-apps/api/core';
 	import { showNotification } from '$lib/notificationStore.svelte.js';
 
-
 	let renderVisible = $state({});
 	let lastSceneKey = '';
 
-	let renderOrderfiles = $state([]);
+	let renderOrderfiles = $state([]);      // 实际渲染顺序（正向）
+	let displayOrder = $state([]);          // UI 显示顺序（反向）
+	let selectedIndex = $state(0);
 
 	let visible = $state(false);
 
+	let gameName = $state("");
+	let platform = $state("");
+	let appId = $state("");
+	let roleName = $state("");
+	let skinName = $state("");
+	let editMode = $state(false);
 
+	// 从实际渲染顺序同步到 UI 显示顺序
+	function syncDisplayFromRender() {
+		displayOrder = [...renderOrderfiles].reverse();
+	}
 
+	// 从 UI 显示顺序同步到实际渲染顺序
+	function syncRenderFromDisplay() {
+		renderOrderfiles = [...displayOrder].reverse();
+		applyRenderOrder();
+	}
 
-	$effect(() => {
+	function applyRenderOrder() {
+		const renderer = getRenderer();
+		if (renderer?._skeletons && renderer?._fileNames?.files) {
+			const originalFiles = renderer._fileNames.files;
+			renderer._customDrawOrder = renderOrderfiles.map(file => {
+				return String(originalFiles.indexOf(file));
+			});
+			renderer.render(0);
+		}
+	}
 
+	// 使用 $effect.pre 在 DOM 更新前执行，避免循环
+	let initializing = false;
+	
+	$effect.pre(() => {
 		const sceneKey =
 			`${appState.directories.selectedDir}_${appState.directories.selectedScene}`;
-
 
 		const files =
 			appState.directories.files?.[appState.directories.selectedDir]?.[
 				appState.directories.selectedScene
 			]?.files ?? [];
 
+		if (files.length === 0) return;
 
-		renderOrderfiles = [...files].reverse();
-
-
+		// 只有在场景变化时才重新初始化
 		if (sceneKey !== lastSceneKey) {
-
 			lastSceneKey = sceneKey;
-
-
+			initializing = true;
+			
+			// 实际渲染顺序（正向）
+			renderOrderfiles = [...files];
+			// UI 显示顺序（反向）
+			syncDisplayFromRender();
+			
 			renderVisible = Object.fromEntries(
-				renderOrderfiles.map(file => [
-					file,
-					true
-				])
+				files.map(file => [file, true])
 			);
-
+			
+			initializing = false;
 		}
-
 	});
 
-
-	$effect(() => {
-
+	// 单独处理 renderVisible 的初始化
+	$effect.pre(() => {
+		if (initializing) return;
 		for (const file of renderOrderfiles) {
-
 			if (renderVisible[file] === undefined) {
 				renderVisible[file] = true;
 			}
-
 		}
-
 	});
-	
-	let selectedIndex = $state(0);
-
-	// 模拟 JSON 中 info 的数据
-	let gameName = $state("");
-	let platform = $state("");
-	let appId = $state("");
-	let roleName = $state("");
-	let skinName = $state("");
-
-	let editMode = $state(false);
 
 	function toggle() {
 		visible = !visible;
@@ -87,113 +101,36 @@
 	function moveUp() {
 		if (selectedIndex <= 0) return;
 
-		const scene =
-			appState.directories.files?.[appState.directories.selectedDir]?.[
-				appState.directories.selectedScene
-			];
-
-		if (!scene?.files) return;
-
-		const uiFiles = [...scene.files].reverse();
-
 		[
-			uiFiles[selectedIndex],
-			uiFiles[selectedIndex - 1]
+			displayOrder[selectedIndex],
+			displayOrder[selectedIndex - 1]
 		] = [
-			uiFiles[selectedIndex - 1],
-			uiFiles[selectedIndex]
+			displayOrder[selectedIndex - 1],
+			displayOrder[selectedIndex]
 		];
 
-		scene.files = uiFiles.reverse();
-
-		const renderer = getRenderer();
-
-		if (renderer?._skeletons) {
-
-			if (!renderer._customDrawOrder) {
-				renderer._customDrawOrder =
-					Object.keys(renderer._skeletons);
-			}
-
-			const order = renderer._customDrawOrder;
-
-			[
-				order[selectedIndex],
-				order[selectedIndex - 1]
-			] = [
-				order[selectedIndex - 1],
-				order[selectedIndex]
-			];
-
-			console.log('new order:', order);
-
-			renderer.render(0);
-		}
-
-		if (renderer?._fileNames?.files) {
-			renderer._fileNames.files = [...scene.files];
-			renderer.render(0);
-		}
-
 		selectedIndex--;
+
+		syncRenderFromDisplay();
 	}
 
 	function moveDown() {
-		if (selectedIndex >= renderOrderfiles.length - 1) return;
-
-		const scene =
-			appState.directories.files?.[appState.directories.selectedDir]?.[
-				appState.directories.selectedScene
-			];
-
-		if (!scene?.files) return;
-
-		const uiFiles = [...scene.files].reverse();
+		if (selectedIndex >= displayOrder.length - 1) return;
 
 		[
-			uiFiles[selectedIndex],
-			uiFiles[selectedIndex + 1]
+			displayOrder[selectedIndex],
+			displayOrder[selectedIndex + 1]
 		] = [
-			uiFiles[selectedIndex + 1],
-			uiFiles[selectedIndex]
+			displayOrder[selectedIndex + 1],
+			displayOrder[selectedIndex]
 		];
 
-		scene.files = uiFiles.reverse();
-
-		const renderer = getRenderer();
-
-		if (renderer?._skeletons) {
-
-			if (!renderer._customDrawOrder) {
-				renderer._customDrawOrder =
-					Object.keys(renderer._skeletons);
-			}
-
-			const order = renderer._customDrawOrder;
-
-			[
-				order[selectedIndex],
-				order[selectedIndex + 1]
-			] = [
-				order[selectedIndex + 1],
-				order[selectedIndex]
-			];
-
-			console.log('new order:', order);
-
-			renderer.render(0);
-		}
-
-		if (renderer?._fileNames?.files) {
-			renderer._fileNames.files = [...scene.files];
-			renderer.render(0);
-		}
-
 		selectedIndex++;
+
+		syncRenderFromDisplay();
 	}
 
 	function saveFileInfo() {
-		// 暂时只做 UI
 		console.log({
 			gameName,
 			platform,
@@ -204,203 +141,123 @@
 	}
 
 	async function writeConfig() {
+		const draworder = [...renderOrderfiles];
 
-	const draworder = [
-		...$state.snapshot(renderOrderfiles)
-	];
-
-
-	console.log(
-		'写入配置:',
-		draworder
-	);
-
-
-	try {
-
-		await invoke(
-			'write_draworder_config',
-			{
-				dirPath: appState.directories.selectedDir,
-				draworder
-			}
-		);
-
-		showNotification('配置写入成功');
-
-
-	} catch (error) {
-
-		showNotification('配置写入失败');
-
-	}
-
+		try {
+			await invoke(
+				'write_draworder_config',
+				{
+					dirPath: appState.directories.selectedDir,
+					draworder
+				}
+			);
+			showNotification('配置写入成功');
+		} catch (error) {
+			showNotification('配置写入失败');
+		}
 	}
 </script>
 
+<!-- HTML 部分保持不变 -->
 <div id="rightToolbar">
-
 	<button id="toggleBtn" onclick={toggle}>
 		{visible ? '>' : '<'}
 	</button>
 
 	{#if visible}
 		<div id="panel">
+			<div id="title">扩展功能</div>
 
-			<div id="title">
-				扩展功能
-			</div>
-
-			<div id="subtitle">
-				文件信息:
-			</div>
+			<div id="subtitle">文件信息:</div>
 
 			<div id="fileInfo">
-
-				<!-- 游戏名称 -->
 				<div class="infoGameName">
 					{#if editMode}
-						<input
-							type="text"
-							bind:value={gameName}
-						/>
+						<input type="text" bind:value={gameName} />
 					{:else}
 						<span>{gameName || "无数据"}</span>
 					{/if}
 				</div>
 
-				<!-- 平台 / 包名 -->
 				<div class="infoSub">
 					{#if editMode}
-						<input
-							type="text"
-							bind:value={platform}
-							placeholder="平台"
-						/>
-
-						<input
-							type="text"
-							bind:value={appId}
-							placeholder="包名"
-						/>
+						<input type="text" bind:value={platform} placeholder="平台" />
+						<input type="text" bind:value={appId} placeholder="包名" />
 					{:else}
 						<span>{platform || "无数据"}</span>
 						<span>{appId || "无数据"}</span>
 					{/if}
 				</div>
 
-				<!-- 角色 -->
 				<div class="infoItem">
 					<span class="infoLabel">角色：</span>
-
 					{#if editMode}
-						<input
-							type="text"
-							bind:value={roleName}
-						/>
+						<input type="text" bind:value={roleName} />
 					{:else}
 						<span>{roleName || "无数据"}</span>
 					{/if}
 				</div>
 
-				<!-- 皮肤 -->
 				<div class="infoItem">
 					<span class="infoLabel">皮肤：</span>
-
 					{#if editMode}
-						<input
-							type="text"
-							bind:value={skinName}
-						/>
+						<input type="text" bind:value={skinName} />
 					{:else}
 						<span>{skinName || "无数据"}</span>
 					{/if}
 				</div>
 
-				<!-- 编辑 / 保存 -->
 				<div id="fileInfoButtons">
 					<label class="editCheck">
-						<input
-							type="checkbox"
-							bind:checked={editMode}
-						/>
+						<input type="checkbox" bind:checked={editMode} />
 						<span>编辑</span>
 					</label>
-
-					<button onclick={saveFileInfo}>
-						保存
-					</button>
+					<button onclick={saveFileInfo}>保存</button>
 				</div>
-
 			</div>
 
-			<div id="subtitle">
-				Alpha 模式：
+			<div id="subtitle">Alpha 模式：</div>
+			<div id="subtitle">渲染顺序控制台:</div>
+
+			<div id="renderOrderfileList">
+				{#each displayOrder as file, index}
+					<!-- svelte-ignore a11y_no_static_element_interactions -->
+					<!-- svelte-ignore a11y_click_events_have_key_events -->
+					<div
+						class:selected={index === selectedIndex}
+						class="renderOrderfileItem"
+						onclick={() => selectFile(index)}
+					>
+						<input
+							class="renderVisibleCheck"
+							type="checkbox"
+							checked={renderVisible[file]}
+							onchange={() => {
+								renderVisible[file] = !renderVisible[file];
+								const renderer = getRenderer();
+								if (renderer) {
+									renderer._hiddenFiles = {};
+									for (const name of Object.keys(renderVisible)) {
+										if (renderVisible[name] === false) {
+											renderer._hiddenFiles[name] = true;
+										}
+									}
+								}
+							}}
+							onclick={(e) => e.stopPropagation()}
+						/>
+						{file}
+					</div>
+				{/each}
 			</div>
-
-			<div id="subtitle">
-				渲染顺序控制台:
-			</div>
-
-<div id="renderOrderfileList">
-	{#each renderOrderfiles as file, index}
-		<!-- svelte-ignore a11y_no_static_element_interactions -->
-		<!-- svelte-ignore a11y_click_events_have_key_events -->
-		<div
-			class:selected={index === selectedIndex}
-			class="renderOrderfileItem"
-			onclick={() => selectFile(index)}
-		>
-			<input
-				class="renderVisibleCheck"
-				type="checkbox"
-				checked={renderVisible[file]}
-				onchange={() => {
-
-					renderVisible[file] = !renderVisible[file];
-
-					const renderer = getRenderer();
-
-					if (renderer) {
-
-						const files = $state.snapshot(
-							renderer._fileNames.files
-						);
-
-						renderer._hiddenDrawOrder = {};
-
-						files.forEach((name, index) => {
-
-							if (renderVisible[name] === false) {
-								renderer._hiddenDrawOrder[index] = true;
-							}
-
-						});
-
-					}
-					// console.log(
-					// 	'hidden:',
-					// 	$state.snapshot(renderer._hiddenDrawOrder)
-					// );
-
-				}}
-				onclick={(e) => e.stopPropagation()}
-			/>
-
-			{file}
-		</div>
-	{/each}
-</div>
 
 			<div id="renderOrderbuttons">
 				<button onclick={moveUp}>上移</button>
 				<button onclick={moveDown}>下移</button>
 				<button onclick={writeConfig}>写入配置</button>
 			</div>
-
 		</div>
 	{/if}
-
 </div>
 
 <style>

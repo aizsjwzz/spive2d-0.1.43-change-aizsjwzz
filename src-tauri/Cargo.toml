@@ -1,5 +1,5 @@
 [package]
-name = "spive2d_C"
+name = "spive2d_Plugin"
 version = "0.1.40"
 description = ""
 authors = ["aizsjwzz"]
