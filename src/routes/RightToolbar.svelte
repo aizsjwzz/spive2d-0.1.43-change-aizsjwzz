@@ -9,6 +9,7 @@
 	import { getRenderer } from '$lib/rendererStore.svelte.js';
 	import { invoke } from '@tauri-apps/api/core';
 	import { showNotification } from '$lib/notificationStore.svelte.js';
+	import { t } from '$lib/i18n.svelte.js';
 
 	let renderVisible = $state({});
 	let lastSceneKey = '';
@@ -41,9 +42,18 @@
 		const renderer = getRenderer();
 		if (renderer?._skeletons && renderer?._fileNames?.files) {
 			const originalFiles = renderer._fileNames.files;
-			renderer._customDrawOrder = renderOrderfiles.map(file => {
-				return String(originalFiles.indexOf(file));
-			});
+			const isMerged = renderer._fileNames.isMerged;
+
+			renderer._customDrawOrder = renderOrderfiles
+				.map(file => {
+					const index = originalFiles.indexOf(file);
+					if (index < 0) return null;
+
+					return String(isMerged ? index : index + 1);
+				})
+				.filter(key => key !== null)
+				.filter(key => renderer._skeletons[key]);
+
 			renderer.render(0);
 		}
 	}
@@ -140,6 +150,20 @@
 		});
 	}
 
+	//Alpha 模式控件
+
+	let alphaMode = $state(appState.alphaMode);
+
+	async function handleAlphaModeChange(e) {
+		alphaMode = e.target.value;
+		appState.alphaMode = alphaMode;
+
+		const renderer = getRenderer();
+		if (renderer && renderer.setAlphaMode) {
+			await renderer.setAlphaMode(alphaMode);
+		}
+	}
+
 	async function writeConfig() {
 		const draworder = [...displayOrder];
 
@@ -166,7 +190,7 @@
 
 	{#if visible}
 		<div id="panel">
-			<div id="title">扩展功能</div>
+			<div id="title">Plugin:</div>
 
 			<div id="subtitle">文件信息:</div>
 
@@ -216,7 +240,15 @@
 				</div>
 			</div>
 
-			<div id="subtitle">Alpha 模式：</div>
+			<div class="alphaModeRow">
+				<div id="subtitle">Alpha 模式：</div>
+				<select id="alphaModeSelector" value={alphaMode} onchange={handleAlphaModeChange}>
+					<option value="pma">{t('alphaModePMA')}</option>
+					<option value="unpack">{t('alphaModeUnpack')}</option>
+					<option value="npm">{t('alphaModeNPM')}</option>
+				</select>
+			</div>
+			
 			<div id="subtitle">渲染顺序控制台:</div>
 
 			<div id="renderOrderfileList">
@@ -299,7 +331,8 @@
 }
 
 #title {
-	height: 20px;
+	height: 15px;
+	padding: 0px 1px 5px 5px;
 	display: flex;
 	align-items: center;
 	padding-left: 0px;
@@ -308,9 +341,44 @@
 }
 
 #subtitle {
-	padding: 1px 0 1px 10px;
+	padding: 1px 0 1px 5px;
 	color: #fff;
 	border-bottom: 1px solid #444;
+}
+
+.alphaModeRow {
+	display: grid;
+	/* grid-template-columns: max-content minmax(0, 1fr); */
+	grid-template-columns: 90px 1fr;
+	align-items: center;
+	column-gap: 0px;
+	width: 100%;
+	height: 25px;
+	white-space: nowrap;
+}
+
+.alphaModeRow #subtitle {
+	display: block;
+	white-space: nowrap;
+	color: var(--text-color);
+	font-size: 16px;
+}
+
+#alphaModeSelector {
+	padding-left: 2px;
+	text-indent: 0;
+	text-align: left;
+	display: block;
+	width: 100%;
+	min-width: 0;
+	height: 25px;
+	line-height: 10px;
+	border-radius: 6px;
+	outline: none;
+	color: var(--text-color);
+	border: var(--border-color);
+	font-size: 14px;
+	background-color: var(--sidebar-color);
 }
 
 /* 文件信息 */

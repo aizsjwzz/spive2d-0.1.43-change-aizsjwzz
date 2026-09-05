@@ -184,6 +184,7 @@ export class SpineRendererBase extends BaseRenderer {
     this._fileNames = scene;
     this._isFileJson = isJson;
     this._skeletons = {};
+    this._customDrawOrder = null;
     this._animationStates = [];
     this._attachmentsCache = {};
     this._evidenceCache = new Map();
@@ -1115,7 +1116,10 @@ export class SpineRendererBase extends BaseRenderer {
           continue;
         }
       
-      const { skeleton, state } = this._skeletons[key];
+      const entry = this._skeletons[key];
+      if (!entry) continue;
+      const { skeleton, state } = entry;
+      
       if (delta > 0 && !this._paused) state.update(delta * this._speed);
       state.apply(skeleton);
       this._applyParameterOverrides(key);
@@ -1162,7 +1166,9 @@ export class SpineRendererBase extends BaseRenderer {
 
   _getSortedSkeletonKeys() {
     if (this._customDrawOrder) {
-      return [...this._customDrawOrder];
+      return this._customDrawOrder
+        .map(String)
+        .filter((key) => this._skeletons?.[key]);
     }
     const sceneInfo = this._fileNames;
     return Object.keys(this._skeletons).sort((a, b) => {
@@ -1196,6 +1202,7 @@ export class SpineRendererBase extends BaseRenderer {
       this._ctx = null;
     }
     this._skeletons = {};
+    this._customDrawOrder = null;
     this._animationStates = [];
     this._primaryCache = null;
     if (this._evidenceCache) this._evidenceCache.clear();
