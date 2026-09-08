@@ -20,8 +20,8 @@
 	import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 	import { listen } from '@tauri-apps/api/event';
 	import { downloadDir, join } from '@tauri-apps/api/path';
-	import { mkdir, exists } from '@tauri-apps/plugin-fs';
-  //import { mkdir, exists, readTextFile } from '@tauri-apps/plugin-fs';
+	//import { mkdir, exists } from '@tauri-apps/plugin-fs';
+  import { mkdir, exists, readTextFile } from '@tauri-apps/plugin-fs';
 	import { getCurrentWindow } from '@tauri-apps/api/window';
 
 	if (typeof window !== 'undefined') {
@@ -258,6 +258,24 @@
       };
       const previousSkins = getRenderer()?.getPropertyItems?.('skins')?.filter(item => item.checked).map(item => item.name) || [];
       disposeModel();
+      const configPath = await join(inputPath, 'spive2d_config.json');
+
+      if (await exists(configPath)) {
+          try {
+              const configText = await readTextFile(configPath);
+              const config = JSON.parse(configText);
+
+              if (
+                  config.alphaMode === 'pma' ||
+                  config.alphaMode === 'unpack' ||
+                  config.alphaMode === 'npm'
+              ) {
+                  appState.alphaMode = config.alphaMode;
+              }
+          } catch (error) {
+              console.warn('[CONFIG DEBUG] Failed to read config:', error);
+          }
+      }
       await initModel(previousSkins);
       appState.initialized = true;
       dialogOpen = false;
