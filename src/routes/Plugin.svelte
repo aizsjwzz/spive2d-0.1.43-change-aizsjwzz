@@ -28,6 +28,7 @@
 	let roleName = $state("");
 	let skinName = $state("");
 	let editMode = $state(false);
+	let editinfoMode = $state(false);
 
 	// 从实际渲染顺序同步到 UI 显示顺序
 	function syncDisplayFromRender() {
@@ -156,6 +157,10 @@
 
 	let alphaMode = $state(appState.alphaMode);
 
+	$effect(() => {
+		alphaMode = appState.alphaMode;
+	});
+
 	async function handleAlphaModeChange(e) {
 		alphaMode = e.target.value;
 		appState.alphaMode = alphaMode;
@@ -238,6 +243,10 @@
 					<label class="editCheck">
 						<input type="checkbox" bind:checked={editMode} />
 						<span>编辑</span>
+					</label>
+					<label class="editCheck">
+						<input type="checkbox" bind:checked={editinfoMode} />
+						<span>继承</span>
 					</label>
 					<button onclick={saveFileInfo}>保存</button>
 				</div>
