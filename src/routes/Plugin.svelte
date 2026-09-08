@@ -10,6 +10,8 @@
 	import { invoke } from '@tauri-apps/api/core';
 	import { showNotification } from '$lib/notificationStore.svelte.js';
 	import { t } from '$lib/i18n.svelte.js';
+	import { exists, readTextFile ,writeTextFile } from '@tauri-apps/plugin-fs';
+	import { join } from '@tauri-apps/api/path';
 
 	let { onFileSortModeChange } = $props();
 
@@ -28,6 +30,7 @@
 	let roleName = $state("");
 	let skinName = $state("");
 	let editMode = $state(false);
+	let showedit = $state(false);
 	let editinfoMode = $state(false);
 
 	// 从实际渲染顺序同步到 UI 显示顺序
@@ -142,15 +145,94 @@
 
 		syncRenderFromDisplay();
 	}
+	//读取info
+	async function readFileInfo(dirPath) {
+		if (!dirPath) return;
 
-	function saveFileInfo() {
-		console.log({
-			gameName,
-			platform,
-			appId,
-			roleName,
-			skinName
-		});
+		try {
+			const configPath = await join(dirPath, 'spive2d_config.json');
+
+			if (!(await exists(configPath))) {
+				gameName = "";
+				platform = "";
+				appId = "";
+				roleName = "";
+				skinName = "";
+				return;
+			}
+
+			const configText = await readTextFile(configPath);
+			const config = JSON.parse(configText);
+			const info = config.info;
+
+			if (!info) {
+				gameName = "";
+				platform = "";
+				appId = "";
+				roleName = "";
+				skinName = "";
+				return;
+			}
+
+			gameName = info.gameName ?? "";
+			platform = info.platform ?? "";
+			appId = info.appId ?? "";
+			roleName = info.roleName ?? "";
+			skinName = info.skinName ?? "";
+		} catch (error) {
+			console.warn('[CONFIG DEBUG] Failed to read file info:', error);
+
+			gameName = "";
+			platform = "";
+			appId = "";
+			roleName = "";
+			skinName = "";
+		}
+	}
+
+	$effect(() => {
+    const dirPath = appState.directories.selectedDir;
+
+		if (dirPath) {
+			readFileInfo(dirPath);
+		}
+	});
+
+	async function saveFileInfo() {
+		const dirPath = appState.directories.selectedDir;
+
+		if (!dirPath) {
+			showNotification('未选择目录');
+			return;
+		}
+
+		try {
+			const configPath = await join(dirPath, 'spive2d_config.json');
+			let config = {};
+
+			if (await exists(configPath)) {
+				const configText = await readTextFile(configPath);
+				config = JSON.parse(configText);
+			}
+
+			config.info = {
+				appId,
+				gameName,
+				platform,
+				roleName,
+				skinName
+			};
+
+			await writeTextFile(
+				configPath,
+				JSON.stringify(config, null, 4)
+			);
+
+			showNotification('文件信息保存成功');
+		} catch (error) {
+			console.error('[CONFIG DEBUG] Failed to save file info:', error);
+			showNotification('文件信息保存失败');
+		}
 	}
 
 	//Alpha 模式控件
@@ -241,12 +323,16 @@
 
 				<div id="fileInfoButtons">
 					<label class="editCheck">
+						<input type="checkbox" bind:checked={showedit} />
+						<span>主页显示</span>
+					</label>
+					<label class="editCheck">
 						<input type="checkbox" bind:checked={editMode} />
 						<span>编辑</span>
 					</label>
 					<label class="editCheck">
 						<input type="checkbox" bind:checked={editinfoMode} disabled={!editMode}/>
-						<span>继承上一条</span>
+						<span>继承</span>
 					</label>
 					<button onclick={saveFileInfo}>保存</button>
 				</div>
@@ -445,6 +531,7 @@
 
 /* 角色 / 皮肤 */
 .infoItem {
+	margin-top: 2px;
 	display: flex;
 	padding: 1px 1px;
 	align-items: center;
@@ -454,18 +541,25 @@
 	color: #fff;
 	font-size: 18px;
 	line-height: 21px;
+		line-height: 1.1;
+		text-shadow: 
+		-1px -1px 0 #000,
+		1px -1px 0 #000,
+		-1px 1px 0 #000,
+		1px 1px 0 #000;
 }
 
 .infoLabel {
 	color: #f1f1f1;
 	margin-right: 4px;
+	
 }
 
 /* 编辑 / 保存 */
 #fileInfoButtons {
 	display: flex;
 	align-items: center;
-	gap: 10px;
+	gap: 2px;
 	margin-top: 0px;
 	height: 25px;
 }
