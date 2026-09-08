@@ -245,8 +245,8 @@
 						<span>编辑</span>
 					</label>
 					<label class="editCheck">
-						<input type="checkbox" bind:checked={editinfoMode} />
-						<span>继承</span>
+						<input type="checkbox" bind:checked={editinfoMode} disabled={!editMode}/>
+						<span>继承上一条</span>
 					</label>
 					<button onclick={saveFileInfo}>保存</button>
 				</div>
