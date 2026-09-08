@@ -11,6 +11,8 @@
 	import { showNotification } from '$lib/notificationStore.svelte.js';
 	import { t } from '$lib/i18n.svelte.js';
 
+	let { onFileSortModeChange } = $props();
+
 	let renderVisible = $state({});
 	let lastSceneKey = '';
 
@@ -191,7 +193,7 @@
 
 	{#if visible}
 		<div id="panel">
-			<div id="title">Plugin:</div>
+			<div id="title">Plugin: v1.3</div>
 
 			<div id="subtitle">文件信息:</div>
 
@@ -247,6 +249,22 @@
 					<option value="pma">{t('alphaModePMA')}</option>
 					<option value="unpack">{t('alphaModeUnpack')}</option>
 					<option value="npm">{t('alphaModeNPM')}</option>
+				</select>
+			</div>
+
+			<div class="sortModeRow">
+				<div id="subtitle">排序方式：</div>
+				<select
+					id="sortModeSelector"
+					bind:value={appState.fileSortMode}
+					onchange={() => {
+						console.log('[SORT DEBUG] RightToolbar change:', appState.fileSortMode);
+						onFileSortModeChange();
+					}}
+				>
+					<option value="asc">{t('asc')}</option>
+					<option value="desc">{t('desc')}</option>
+					<option value="config">{t('config')}</option>
 				</select>
 			</div>
 			
@@ -347,7 +365,9 @@
 	border-bottom: 1px solid #444;
 }
 
-.alphaModeRow {
+
+.alphaModeRow,
+.sortModeRow {
 	display: grid;
 	/* grid-template-columns: max-content minmax(0, 1fr); */
 	grid-template-columns: 90px 1fr;
@@ -365,7 +385,8 @@
 	font-size: 16px;
 }
 
-#alphaModeSelector {
+#alphaModeSelector,
+#sortModeSelector {
 	padding-left: 2px;
 	text-indent: 0;
 	text-align: left;

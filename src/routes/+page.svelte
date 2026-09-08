@@ -21,6 +21,7 @@
 	import { listen } from '@tauri-apps/api/event';
 	import { downloadDir, join } from '@tauri-apps/api/path';
 	import { mkdir, exists } from '@tauri-apps/plugin-fs';
+  //import { mkdir, exists, readTextFile } from '@tauri-apps/plugin-fs';
 	import { getCurrentWindow } from '@tauri-apps/api/window';
 
 	if (typeof window !== 'undefined') {
@@ -597,7 +598,7 @@
     onSettingsClick={() => dialogOpen = true}
 	onFileSortModeChange={handleFileSortModeChange}
   />
-  <RightToolbar />
+  <RightToolbar onFileSortModeChange={handleFileSortModeChange} />
   <div id="canvasContainer" bind:this={canvasContainer}></div>
 
   {#if appState.readConfig}
