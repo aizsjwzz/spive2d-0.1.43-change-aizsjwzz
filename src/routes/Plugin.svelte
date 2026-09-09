@@ -465,6 +465,12 @@
 		</div>
 	{/if}
 </div>
+//显示信息
+{#if showedit}
+    <div id="infoText">
+        {gameName}【{roleName}：{skinName}】
+    </div>
+{/if}
 
 <style>
 #rightToolbar {
@@ -518,6 +524,21 @@
 	padding: 1px 0 1px 5px;
 	color: #fff;
 	border-bottom: 1px solid #444;
+}
+
+#infoText {
+  position: fixed;
+  bottom: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: white;
+  font-size: 25px;
+  z-index: 100;
+  text-shadow:
+    -1px -1px 0 #000,
+     1px -1px 0 #000,
+    -1px  1px 0 #000,
+     1px  1px 0 #000;
 }
 
 
