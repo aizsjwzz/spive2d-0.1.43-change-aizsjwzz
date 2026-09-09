@@ -32,6 +32,8 @@
 	let editMode = $state(false);
 	let showedit = $state(false);
 	let editinfoMode = $state(false);
+	let previousFileInfo = $state(null);
+	let currentFileHasInfo = $state(false);
 
 	// 从实际渲染顺序同步到 UI 显示顺序
 	function syncDisplayFromRender() {
@@ -145,19 +147,41 @@
 
 		syncRenderFromDisplay();
 	}
+	function clearFileInfo() {
+		gameName = "";
+		platform = "";
+		appId = "";
+		roleName = "";
+		skinName = "";
+	}
+
+	function applyPreviousFileInfo() {
+		if (!previousFileInfo) {
+			clearFileInfo();
+			return;
+		}
+
+		gameName = previousFileInfo.gameName;
+		platform = previousFileInfo.platform;
+		appId = previousFileInfo.appId;
+		roleName = previousFileInfo.roleName;
+		skinName = previousFileInfo.skinName;
+	}
 	//读取info
 	async function readFileInfo(dirPath) {
 		if (!dirPath) return;
+
+		currentFileHasInfo = false;
 
 		try {
 			const configPath = await join(dirPath, 'spive2d_config.json');
 
 			if (!(await exists(configPath))) {
-				gameName = "";
-				platform = "";
-				appId = "";
-				roleName = "";
-				skinName = "";
+				if (editinfoMode) {
+					applyPreviousFileInfo();
+				} else {
+					clearFileInfo();
+				}
 				return;
 			}
 
@@ -166,27 +190,45 @@
 			const info = config.info;
 
 			if (!info) {
-				gameName = "";
-				platform = "";
-				appId = "";
-				roleName = "";
-				skinName = "";
+				if (editinfoMode) {
+					applyPreviousFileInfo();
+				} else {
+					clearFileInfo();
+				}
 				return;
 			}
 
-			gameName = info.gameName ?? "";
-			platform = info.platform ?? "";
-			appId = info.appId ?? "";
-			roleName = info.roleName ?? "";
-			skinName = info.skinName ?? "";
+			await writeTextFile(
+				configPath,
+				JSON.stringify(config, null, 4)
+			);
+
+			currentFileHasInfo = true;
+
+			previousFileInfo = {
+				gameName: info.gameName ?? "",
+				platform: info.platform ?? "",
+				appId: info.appId ?? "",
+				roleName: info.roleName ?? "",
+				skinName: info.skinName ?? ""
+			};
+
+			gameName = previousFileInfo.gameName;
+			platform = previousFileInfo.platform;
+			appId = previousFileInfo.appId;
+			roleName = previousFileInfo.roleName;
+			skinName = previousFileInfo.skinName;
+
 		} catch (error) {
 			console.warn('[CONFIG DEBUG] Failed to read file info:', error);
 
-			gameName = "";
-			platform = "";
-			appId = "";
-			roleName = "";
-			skinName = "";
+			currentFileHasInfo = false;
+
+			if (editinfoMode) {
+				applyPreviousFileInfo();
+			} else {
+				clearFileInfo();
+			}
 		}
 	}
 
@@ -195,6 +237,16 @@
 
 		if (dirPath) {
 			readFileInfo(dirPath);
+		}
+	});
+
+	$effect(() => {
+		if (!editinfoMode || currentFileHasInfo) return;
+
+		if (previousFileInfo) {
+			applyPreviousFileInfo();
+		} else {
+			clearFileInfo();
 		}
 	});
 
