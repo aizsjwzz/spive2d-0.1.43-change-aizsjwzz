@@ -10,10 +10,14 @@
 	import { invoke } from '@tauri-apps/api/core';
 	import { showNotification } from '$lib/notificationStore.svelte.js';
 	import { t } from '$lib/i18n.svelte.js';
-	import { exists, readTextFile ,writeTextFile } from '@tauri-apps/plugin-fs';
+	import { exists, readTextFile ,writeTextFile ,readFile} from '@tauri-apps/plugin-fs';
 	import { join } from '@tauri-apps/api/path';
 
 	let selectedCv = $state("zhsound");
+	let soundConfig = $state({zhcv: "",jpcv: "",krcv: "",encv: ""});
+	let soundList = $state([]);
+	let selectedSound = $state(null);
+	let currentAudio = null;
 	
 	let { onFileSortModeChange } = $props();
 
@@ -36,6 +40,27 @@
 	let editinfoMode = $state(false);
 	let previousFileInfo = $state(null);
 	let currentFileHasInfo = $state(false);
+
+	function getCurrentCv() {
+		const cvKey = {
+			zhsound: 'zhcv',
+			jpsound: 'jpcv',
+			krsound: 'krcv',
+			ensound: 'encv'
+		}[selectedCv];
+		return soundConfig[cvKey] ?? "";
+	}
+	//读取音频text
+	function getCurrentText(sound) {
+		const textKey = {
+			zhsound: 'text',
+			jpsound: 'jptext',
+			krsound: 'krtext',
+			ensound: 'entext'
+		}[selectedCv];
+
+		return sound[textKey] ?? "";
+	}
 
 	// 从实际渲染顺序同步到 UI 显示顺序
 	function syncDisplayFromRender() {
@@ -169,6 +194,46 @@
 		roleName = previousFileInfo.roleName;
 		skinName = previousFileInfo.skinName;
 	}
+	//播放音频
+	async function playSound(sound) {
+		if (currentAudio) {
+			currentAudio.pause();
+			currentAudio.currentTime = 0;
+			currentAudio = null;
+		}
+
+		selectedSound = sound;
+
+		const soundPath = sound[selectedCv];
+		if (!soundPath) return;
+
+		try {
+			const soundsPath = await join(
+				appState.directories.selectedDir,
+				soundPath
+			);
+
+			const data = await readFile(soundsPath);
+			const blob = new Blob([data], { type: 'audio/wav' });
+			const url = URL.createObjectURL(blob);
+			const audio = new Audio(url);
+
+			currentAudio = audio;
+
+			audio.onended = () => {
+				if (currentAudio === audio) {
+					currentAudio = null;
+					selectedSound = null;
+				}
+
+				URL.revokeObjectURL(url);
+			};
+
+			await audio.play();
+		} catch (error) {
+			console.error('[AUDIO DEBUG] Failed to play sound:', error);
+		}
+	}
 	//读取info
 	async function readFileInfo(dirPath) {
 		if (!dirPath) return;
@@ -190,6 +255,30 @@
 			const configText = await readTextFile(configPath);
 			const config = JSON.parse(configText);
 			const info = config.info;
+			const sound = config.sound ?? {};
+			soundConfig = {
+				zhcv: sound.zhcv ?? "",
+				jpcv: sound.jpcv ?? "",
+				krcv: sound.krcv ?? "",
+				encv: sound.encv ?? ""
+			};
+			soundList = Object.entries(sound)
+				.filter(([key, value]) => {
+					return !['zhcv', 'jpcv', 'krcv', 'encv'].includes(key)
+						&& value
+						&& typeof value === 'object';
+				})
+				.map(([name, value]) => ({
+					name,
+					text: value.text ?? "",
+					jptext: value.jptext ?? "",
+					krtext: value.krtext ?? "",
+					entext: value.entext ?? "",
+					zhsound: value.zhsound ?? "",
+					jpsound: value.jpsound ?? "",
+					krsound: value.krsound ?? "",
+					ensound: value.ensound ?? ""
+				}));
 
 			if (!info) {
 				if (editinfoMode) {
@@ -466,48 +555,55 @@
 			</div>
 
 			<div id="audioCvTitle">
-					音频控制台: cv:崔玲
+					音频控制台: cv:{getCurrentCv()}
 				</div>
 
-				<div id="audioCvButtons">
+			<div id="audioCvButtons">
+				{#if soundConfig.zhcv}
 					<button
 						class:active={selectedCv === "zhsound"}
 						onclick={() => selectedCv = "zhsound"}
 					>
 						中文
 					</button>
+				{/if}
 
+				{#if soundConfig.jpcv}
 					<button
 						class:active={selectedCv === "jpsound"}
 						onclick={() => selectedCv = "jpsound"}
 					>
 						日语
 					</button>
+				{/if}
 
+				{#if soundConfig.krcv}
 					<button
 						class:active={selectedCv === "krsound"}
 						onclick={() => selectedCv = "krsound"}
 					>
 						韩语
 					</button>
+				{/if}
 
+				{#if soundConfig.encv}
 					<button
 						class:active={selectedCv === "ensound"}
 						onclick={() => selectedCv = "ensound"}
 					>
 						英语
 					</button>
-				</div>
+				{/if}
+			</div>
 
+			{#each soundList as sound}
 				<div class="audioItem">
-					<button>♫ 星落</button>
-					<span>voice_01zh.wav</span>
+					<button onclick={() => playSound(sound)}>
+						♫ {sound.name}
+					</button>
+					<span>{sound[selectedCv]?.split('/').pop() || ""}</span> 
 				</div>
-
-				<div class="audioItem">
-					<button>⏸︎ 战斗开始</button>
-					<span>voice_02zh.wav</span>
-				</div>
+			{/each}
 			
 
 		</div>
@@ -519,6 +615,19 @@
         {gameName}【{roleName}：{skinName}】
     </div>
 {/if}
+
+<div id="soundInfoText">
+	{#if selectedSound}
+		"{selectedSound[
+			{
+				zhsound: "text",
+				jpsound: "jptext",
+				krsound: "krtext",
+				ensound: "entext"
+			}[selectedCv]
+		] || selectedSound.text || ""}"
+	{/if}
+</div>
 
 <style>
 #rightToolbar {
@@ -576,7 +685,7 @@
 
 #infoText {
   position: fixed;
-  bottom: 10px;
+  bottom: 5px;
   left: 50%;
   transform: translateX(-50%);
   color: white;
@@ -589,6 +698,22 @@
      1px  1px 0 #000;
 }
 
+#soundInfoText {
+  position: fixed;
+  bottom: 45px;
+  text-align: center;
+  line-height: 1.1;
+  left: 50%;
+  transform: translateX(-50%);
+  color: white;
+  font-size: 20px;
+  z-index: 100;
+  text-shadow:
+    -1px -1px 0 #000,
+     1px -1px 0 #000,
+    -1px  1px 0 #000,
+     1px  1px 0 #000;
+}
 
 .alphaModeRow,
 .sortModeRow {
