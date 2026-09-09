@@ -23,6 +23,7 @@
 
 	let renderVisible = $state({});
 	let lastSceneKey = '';
+	let lastFilesKey = '';
 
 	let renderOrderfiles = $state([]);      // 实际渲染顺序（正向）
 	let displayOrder = $state([]);          // UI 显示顺序（反向）
@@ -105,22 +106,28 @@
 				appState.directories.selectedScene
 			]?.files ?? [];
 
-		if (files.length === 0) return;
+		const filesKey = files.join('|');
 
-		// 只有在场景变化时才重新初始化
-		if (sceneKey !== lastSceneKey) {
+		if (
+			sceneKey !== lastSceneKey ||
+			filesKey !== lastFilesKey
+		) {
 			lastSceneKey = sceneKey;
+			lastFilesKey = filesKey;
 			initializing = true;
-			
+
 			// 实际渲染顺序（正向）
 			renderOrderfiles = [...files];
+
 			// UI 显示顺序（反向）
 			syncDisplayFromRender();
-			
+
 			renderVisible = Object.fromEntries(
 				files.map(file => [file, true])
 			);
-			
+
+			selectedIndex = 0;
+
 			initializing = false;
 		}
 	});
@@ -601,7 +608,7 @@
 					<button onclick={() => playSound(sound)}>
 						♫ {sound.name}
 					</button>
-					<span>{sound[selectedCv]?.split('/').pop() || ""}</span> 
+					<span>{sound[selectedCv]?.split('/').pop() || ""}</span>
 				</div>
 			{/each}
 			
