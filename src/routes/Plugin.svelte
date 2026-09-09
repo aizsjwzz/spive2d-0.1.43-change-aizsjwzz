@@ -379,7 +379,15 @@
 						<span>主页显示</span>
 					</label>
 					<label class="editCheck">
-						<input type="checkbox" bind:checked={editMode} />
+						<input
+							type="checkbox"
+							bind:checked={editMode}
+							onchange={() => {
+								if (!editMode) {
+									editinfoMode = false;
+								}
+							}}
+						/>
 						<span>编辑</span>
 					</label>
 					<label class="editCheck">
