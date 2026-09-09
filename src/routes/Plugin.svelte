@@ -13,6 +13,8 @@
 	import { exists, readTextFile ,writeTextFile } from '@tauri-apps/plugin-fs';
 	import { join } from '@tauri-apps/api/path';
 
+	let selectedCv = $state("zhsound");
+	
 	let { onFileSortModeChange } = $props();
 
 	let renderVisible = $state({});
@@ -463,7 +465,50 @@
 				<button onclick={writeConfig}>写入配置</button>
 			</div>
 
-			<div id="subtitle">音频控制台:</div>
+			<div id="audioCvTitle">
+					音频控制台: cv:崔玲
+				</div>
+
+				<div id="audioCvButtons">
+					<button
+						class:active={selectedCv === "zhsound"}
+						onclick={() => selectedCv = "zhsound"}
+					>
+						中文
+					</button>
+
+					<button
+						class:active={selectedCv === "jpsound"}
+						onclick={() => selectedCv = "jpsound"}
+					>
+						日语
+					</button>
+
+					<button
+						class:active={selectedCv === "krsound"}
+						onclick={() => selectedCv = "krsound"}
+					>
+						韩语
+					</button>
+
+					<button
+						class:active={selectedCv === "ensound"}
+						onclick={() => selectedCv = "ensound"}
+					>
+						英语
+					</button>
+				</div>
+
+				<div class="audioItem">
+					<button>♫ 星落</button>
+					<span>voice_01zh.wav</span>
+				</div>
+
+				<div class="audioItem">
+					<button>⏸︎ 战斗开始</button>
+					<span>voice_02zh.wav</span>
+				</div>
+			
 
 		</div>
 	{/if}
@@ -759,4 +804,49 @@
 	transition: background 0.2s;
 	white-space: nowrap;
 }
+/* 音频控制台样式 */
+#audioCvButtons,
+.audioItem {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 0px 0px;
+    width: 100%;
+}
+
+#audioCvButtons button{
+    padding: 2px 12px;
+    font-size: 15px;
+    background: var(--sidebar-color);
+    border: var(--border-color);
+    border-radius: 4px;
+    color: #fff;
+    cursor: pointer;
+    transition: background 0.2s;
+    white-space: nowrap;
+}
+
+
+.audioItem button {
+    padding: 3px 8px;
+    font-size: 15px;
+    background: var(--sidebar-color);
+    border: var(--border-color);
+    border-radius: 20px;
+    color: #fff;
+    cursor: pointer;
+    transition: background 0.2s;
+    white-space: nowrap;
+}
+
+#audioCvButtons button:hover,
+.audioItem button:hover {
+    background-color: #555;
+}
+
+.audioItem span {
+    color: #ccc;
+    font-size: 14px;
+}
+
 </style>
