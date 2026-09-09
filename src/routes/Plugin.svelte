@@ -332,7 +332,7 @@
 
 	{#if visible}
 		<div id="panel">
-			<div id="title">Plugin: v1.3</div>
+			<div id="title">Plugin: v1.4</div>
 
 			<div id="subtitle">文件信息:</div>
 
@@ -462,6 +462,9 @@
 				<button onclick={moveDown}>下移</button>
 				<button onclick={writeConfig}>写入配置</button>
 			</div>
+
+			<div id="subtitle">音频控制台:</div>
+
 		</div>
 	{/if}
 </div>
