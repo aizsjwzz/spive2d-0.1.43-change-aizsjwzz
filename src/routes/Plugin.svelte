@@ -23,7 +23,6 @@
 
 	let renderVisible = $state({});
 	let lastSceneKey = '';
-	let lastFilesKey = '';
 
 	let renderOrderfiles = $state([]);      // 实际渲染顺序（正向）
 	let displayOrder = $state([]);          // UI 显示顺序（反向）
@@ -96,41 +95,42 @@
 
 	// 使用 $effect.pre 在 DOM 更新前执行，避免循环
 	let initializing = false;
-	
-	$effect.pre(() => {
-		const sceneKey =
-			`${appState.directories.selectedDir}_${appState.directories.selectedScene}`;
+let lastFilesKey = '';
 
-		const files =
-			appState.directories.files?.[appState.directories.selectedDir]?.[
-				appState.directories.selectedScene
-			]?.files ?? [];
+$effect.pre(() => {
+    const sceneKey =
+        `${appState.directories.selectedDir}_${appState.directories.selectedScene}`;
 
-		const filesKey = files.join('|');
+    const files =
+        appState.directories.files?.[appState.directories.selectedDir]?.[
+            appState.directories.selectedScene
+        ]?.files ?? [];
 
-		if (
-			sceneKey !== lastSceneKey ||
-			filesKey !== lastFilesKey
-		) {
-			lastSceneKey = sceneKey;
-			lastFilesKey = filesKey;
-			initializing = true;
+    const filesKey = files.join('|');
 
-			// 实际渲染顺序（正向）
-			renderOrderfiles = [...files];
+    if (
+        sceneKey !== lastSceneKey ||
+        filesKey !== lastFilesKey
+    ) {
+        lastSceneKey = sceneKey;
+        lastFilesKey = filesKey;
+        initializing = true;
 
-			// UI 显示顺序（反向）
-			syncDisplayFromRender();
+        // 实际渲染顺序（正向）
+        renderOrderfiles = [...files];
 
-			renderVisible = Object.fromEntries(
-				files.map(file => [file, true])
-			);
+        // UI 显示顺序（反向）
+        syncDisplayFromRender();
 
-			selectedIndex = 0;
+        renderVisible = Object.fromEntries(
+            files.map(file => [file, true])
+        );
 
-			initializing = false;
-		}
-	});
+        selectedIndex = 0;
+
+        initializing = false;
+    }
+});
 
 	// 单独处理 renderVisible 的初始化
 	$effect.pre(() => {
@@ -247,6 +247,14 @@
 
 		currentFileHasInfo = false;
 
+		soundList = [];
+		soundConfig = {
+			zhcv: "",
+			jpcv: "",
+			krcv: "",
+			encv: ""
+		};
+
 		try {
 			const configPath = await join(dirPath, 'spive2d_config.json');
 
@@ -331,7 +339,11 @@
 	}
 
 	$effect(() => {
-    const dirPath = appState.directories.selectedDir;
+		const dirPath = appState.directories.selectedDir;
+		const files =
+			appState.directories.files?.[dirPath]?.[
+				appState.directories.selectedScene
+			]?.files ?? [];
 
 		if (dirPath) {
 			readFileInfo(dirPath);
@@ -520,6 +532,8 @@
 					<option value="config">{t('config')}</option>
 				</select>
 			</div>
+
+
 			
 			<div id="subtitle">渲染顺序控制台:</div>
 
